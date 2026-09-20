@@ -1,68 +1,101 @@
 # SNP guest 下 mlx5 数据面实测结论
 
-测试环境：AMD EPYC 9354 / SEV-SNP guest (VMPL0) / ConnectX-7 PF1 直通 /
+环境：AMD EPYC 9354 / SEV-SNP guest (VMPL0) / ConnectX-7 PF1 直通 /
 rdma-core 61.0 / guest kernel 7.0.0-31 / swiotlb 1024MB
 
-## 实测结果
+## 完整测试矩阵
 
-| # | 操作 | 内存来源 | 结果 |
+| # | 路径 | 内存来源 | 结果 |
 |---|------|---------|------|
-| 1 | `ibv_reg_mr` | 普通 4KiB (posix_memalign) | ❌ EIO |
-| 2 | `ibv_reg_mr` | 2MiB 大页 (MAP_HUGETLB) | ❌ EIO |
-| 3 | `ibv_reg_mr` | dma-buf (mmap 后) | ❌ EFAULT |
-| 4 | `ibv_reg_dmabuf_mr` | dma-heap ≤ 768KB | ✅ 成功 |
-| 5 | `ibv_reg_dmabuf_mr` | dma-heap ≥ 1MB | ❌ EIO |
-| 6 | **`ibv_create_cq`** | rdma-core 内部分配 | ❌ **EIO** |
+| 1 | verbs `ibv_reg_mr` | 普通 4KiB | ❌ EIO |
+| 2 | verbs `ibv_reg_mr` | 2MiB 大页 | ❌ EIO |
+| 3 | verbs `ibv_reg_mr` | dma-buf (mmap 后) | ❌ EFAULT |
+| 4 | verbs `ibv_reg_dmabuf_mr` | dma-heap ≤768KB | ✅ |
+| 5 | verbs `ibv_reg_dmabuf_mr` | dma-heap ≥1MB | ❌ EIO (swiotlb) |
+| 6 | verbs `ibv_create_cq` | rdma-core 内部分配 | ❌ EIO |
+| 7 | DevX `devx_umem_reg` | 普通内存 | ❌ EIO |
+| 8 | DevX `devx_umem_reg` | **2MiB 大页（DPDK 形态）** | ❌ **EIO** |
+| 9 | DevX `devx_umem_reg_ex` | dma-buf, `pgsz_bitmap=0` | ❌ EINVAL（参数错，非能力问题） |
+| 10 | DevX `devx_umem_reg_ex` | dma-buf ≤768KB, `pgsz_bitmap≠0` | ✅ |
+| 11 | DevX `devx_umem_reg_ex` | dma-buf ≥1MB | ❌ EIO (swiotlb) |
+| 12 | DevX `devx_alloc_uar` | BAR MMIO | ✅ |
 
-第 5 项的内核日志明确指向 swiotlb：
+第 5/11 项的内核日志：
 
 ```
 mlx5_core 0000:04:00.0: swiotlb buffer is full (sz: 1048576 bytes),
-                        total 524288 (slots), used 81550 (slots)
+                        total 524288 (slots), used 81246 (slots)
 ```
 
-注意总槽位远未用满——是**单次连续 1MB 的映射请求**分配不出来，不是总量耗尽。
-说明 dma-buf 这条路上的 DMA 是经过 swiotlb bounce 的。
+总槽位远未用满，是**单次连续 1MB 的映射**分配不出来。
+verbs 和 DevX 两条路撞的是同一堵墙。
 
-第 6 项在 dmesg 里**无任何输出**，是静默 EIO。根因尚未确定
-（与第 1 项同样是静默 EIO，可能同源）。
+## 统一结论
 
-## 核心结论
+**在这个 SNP guest 里，网卡唯一够得着的内存是 swiotlb 的 bounce 缓冲区。**
 
-**`ibv_create_cq` 失败是硬阻断。** rdma-core 在用户态自行分配 CQ/WQ 缓冲区，
-这部分内存不经过 DPDK 的任何分配器。连 CQ 都建不出来，就谈不上数据面——
-所以**仅让 DPDK 的 mempool/描述符环变成共享内存是不够的**。
+因为那是内核唯一主动转成共享的内存。其它一切（普通内存、大页、
+rdma-core 内部分配）都是私有加密页，在注册阶段就被拒绝（EIO）。
+第 12 项能过是因为它走 BAR MMIO，压根不是 DMA。
 
-这一条同时否定了两个方案：
+三个后果：
 
-- **dma-buf 路线**：数据缓冲区能注册（≤768KB），但队列建不起来，死在更前面。
-- **dpdk-test-main 的挂钩位置**：它挂在 `rte_eth_dma_zone_reserve()` 和
-  mempool populate。对 uio 网卡够用（DPDK 拥有全部队列内存），但 mlx5 的
-  队列内存在 rdma-core 手里，挂钩根本够不着。
+1. **单次映射 <1MB** —— 对几十 MB 的 mbuf 池是致命的
+2. **swiotlb 总量有限**（1GB，已用约 159MB）
+3. **bounce 语义破坏零拷贝** —— 网卡写进 bounce 缓冲页，应用看到的是原页。
+   RDMA 的 MR 是长生命周期映射，不会每包做 `dma_sync`，所以数据很可能
+   根本传不到应用手里。**此条为推断，尚未实测**（探针在 create_cq 就停了）。
 
-## 对方案选择的影响
+因此，任何可行方案都必须造出**第三类内存**：
+guest 里已转共享（C-bit 清除、RMP 标记 shared）、但**不归 swiotlb 管**的内存，
+让网卡直接 DMA 进应用也能看到的那一页。
 
-要让 mlx5 在 SNP 下工作，必须让 rdma-core 内部分配的内存也能被网卡访问。
-可能的着手点：
+**这正是 `dpdk-test-main` 那个内核模块做的事。** 实验独立地验证了它的核心前提。
 
-1. **改 rdma-core**：让 `mlx5_alloc_buf` 从可共享的内存来源分配。
-   需同时维护 rdma-core 补丁和 DPDK 补丁。
-2. **改内核 RDMA 子系统**：在 `ib_umem_get` pin 页时自动转共享、释放时转回。
-   一处改动即可让上层（DPDK、rdma-core、testpmd）全部无感工作，
-   补丁面最小，但动的是内核。
-3. **换网卡类型**：用 virtio-net 等走 uio/vfio 的网卡，DPDK 拥有全部
-   队列内存，`dpdk-test-main` 的挂钩位置就够用了。
+## DevX 的意义（与预期不同）
 
-第 3 点值得认真考虑：若目标只是"DPDK 跑在 host 和 CVM 之间"，
-host↔CVM 的流量并不一定需要 ConnectX-7。坚持用 mlx5 意味着
-额外承担 rdma-core 和/或内核的补丁工作。
+原本猜想 DevX 能绕开内存问题 —— **不成立**，第 8 项证明 DPDK 自己分配的
+大页同样注册失败。
 
-## 复现方式
+但 DevX 仍然关键，原因不同：**它把队列内存放进了 DPDK 的分配器**。
+
+| | verbs 路径 | DevX 路径 |
+|---|---|---|
+| CQ/WQ 缓冲区 | rdma-core 用户态分配 | `mlx5_malloc()` 由 DPDK 分配 |
+| DPDK 侧挂钩能否覆盖 | **不能** | **能** |
+
+`drivers/net/mlx5/linux/mlx5_os.c:1778` 显示 PMD 按设备能力在
+`devx_obj_ops` 和 `ibv_obj_ops` 之间选择。
+
+## 由此得出的架构
+
+```
+内核: 页翻转机制（转共享/转回，显式 opt-in，非自动）
+  +
+DPDK: 挂钩覆盖两处 —— mempool（mbuf）+ DevX 队列内存（CQ/WQ/doorbell）
+  +
+强制走 DevX 路径（verbs 路径的队列内存够不着）
+```
+
+即 `dpdk-test-main` 的架构，但要：
+- 扩展到覆盖 DevX 队列内存（原版只挂了 memzone/mempool，面向 uio 网卡）
+- 内核模块重写（原版的步长 bug、只刷本核 TLB、0777 proc 接口、
+  无生命周期跟踪，详见对该压缩包的审阅）
+
+## 复现
 
 ```bash
-./sync.sh                          # 主机 → CVM
+./sync.sh
 ssh cvm26 'cd ~/snp-dpdk && make'
-ssh cvm26 'cd ~/snp-dpdk && sudo ./snp-probe [字节数]'   # 默认 64MB
+ssh cvm26 'cd ~/snp-dpdk && sudo ./snp-probe [字节数]'   # verbs 路径，默认 64MB
+ssh cvm26 'cd ~/snp-dpdk && sudo ./devx-probe [字节数]'  # DevX 路径，默认 256KB
 ```
 
-需要 root：`/dev/dma_heap/system` 是 root-only，raw packet QP 需要 CAP_NET_RAW。
+需要 root：`/dev/dma_heap/system` 是 root-only，raw packet QP 需 CAP_NET_RAW。
+DevX dma-buf 注册必须设 `pgsz_bitmap`（设 0 会得到 EINVAL，容易误判成不支持）。
+
+## 尚未验证
+
+- 转成共享后的内存，`devx_umem_reg` / `ibv_reg_mr` 是否就能接受（需要先有页翻转机制）
+- bounce 语义是否真的导致数据传不到应用（需要能建起 CQ 才能测）
+- DevX 建 CQ/SQ/RQ 对象本身是否可行（需要拼 PRM 命令）

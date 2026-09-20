@@ -1,10 +1,15 @@
 CFLAGS ?= -O2 -g -Wall -Wextra
-LDLIBS = -libverbs
+BINS = snp-probe devx-probe
+
+all: $(BINS)
 
 snp-probe: snp-probe.c
-	$(CC) $(CFLAGS) -o $@ $< $(LDLIBS)
+	$(CC) $(CFLAGS) -o $@ $< -libverbs
+
+devx-probe: devx-probe.c
+	$(CC) $(CFLAGS) -o $@ $< -libverbs -lmlx5
 
 clean:
-	rm -f snp-probe
+	rm -f $(BINS)
 
-.PHONY: clean
+.PHONY: all clean
