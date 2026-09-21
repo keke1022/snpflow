@@ -113,18 +113,46 @@ GPA 即设备地址）。若将来给 guest 加了 vIOMMU，这里必须改成�
 
 ## D. 尚未验证（按重要性排序）
 
-### D1. 注册成功 ≠ DMA 真的落地
-这是当前最大的未知。我们证明了 `devx_umem_reg_ex` 接受这块内存，
-但**没有证明网卡真的能往里写数据并且 CPU 能读到**。
-要验证必须建起 CQ/QP 并实际收一个包。
+### ~~D1. 注册成功 ≠ DMA 真的落地~~ —— 已验证通过（2026-09-21）
+用 `nop-probe` 建起最小发送通路并投递 NOP 任务单，完整链路走通：
+
+```
+网卡 DMA 读 WQE（共享内存 +0x10000）
+网卡 DMA 读 doorbell record（共享内存 +0x20000）
+网卡处理 NOP
+网卡 DMA 写 CQE（共享内存 +0x0）
+CPU 经 mmap 读到 CQE
+```
+
+不可伪造的判据：
+
+| 字段 | 值 | 含义 |
+|---|---|---|
+| `sop_drop_qpn` | 4682 | **等于本次创建的 sqn**，每次运行都跟着变 |
+| `timestamp` | 0x68c9795c9d772 | 非零硬件时间戳 |
+| `wqe_counter` | 0 | 正是投递的 WQE 索引 |
+| `op_own` | 0x00 | opcode=REQ，正常完成，owner 位已翻转 |
+
+**教训**：中途有过两次误判 ——
+1. 最初的检测条件太弱（把全零缓冲区当成「网卡写过」），假阳性；
+2. 随后 `sop_drop_qpn` 的偏移写成 0x24（实际在 0x38），假阴性。
+
+结论必须建立在不可伪造的判据上。mlx5_cqe64 尾部布局：
+`0x30 timestamp(8) / 0x38 sop_drop_qpn(4) / 0x3c wqe_counter(2) /
+0x3e signature(1) / 0x3f op_own(1)`。
+
+### ~~D3. DevX 建 CQ/SQ 对象本身~~ —— 已验证通过
+CQ、传输域、TIS、SQ、RST→RDY 全部成功，缓冲区均在共享内存里。
+PRM 定义通过 `prm/` 垫片复用 DPDK 的 `mlx5_prm.h`，未手工抄写。
 
 ### D2. 能否基于这个 umem 建 mkey
 `mlx5_devx_mkey_attr` 有 `umem_id` 字段，`mlx5_devx_cmd_mkey_create()`
 会把它写进 PRM 命令，Windows 版 `mlx5_os_reg_mr` 就是这么做的。
 **设计上应该可行，但没实测。**
 
-### D3. DevX 建 CQ/SQ/RQ 对象本身
-需要手工拼 PRM 命令，工作量不小。
+### D3b. RQ（接收队列）与真实收包
+NOP 只验证了发送方向的 CQE 写回。接收方向还需要 RQ + RWQ + 实际收包，
+以及 mkey（数据缓冲区需要 lkey）。
 
 ### D4. 多进程 / 并发
 没测过两个进程同时分配、或一个 buffer 被多个 attachment 导入。
