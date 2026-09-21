@@ -43,6 +43,7 @@
 #include <linux/io.h>
 #include <linux/capability.h>
 #include <linux/sizes.h>
+#include <linux/iommu.h>
 
 #include "cvm_shared.h"
 
@@ -263,6 +264,35 @@ static struct sg_table *cvm_dup_sgt(struct cvm_buffer *buf)
 /* dma_buf_ops                                                         */
 /* ------------------------------------------------------------------ */
 
+/*
+ * 我们在 sg_dma_address 里填的是裸物理地址。只有当设备**不**经过 IOMMU
+ * 翻译时这才是对的。如果设备挂在一个会做地址翻译的 IOMMU 域后面，
+ * 物理地址会被当成 IOVA 去查页表 —— 那是静默的错误数据，比报错难查得多。
+ *
+ * 所以在 attach 阶段就硬性拒绝，而不是只在注释里写「前提是没有 vIOMMU」。
+ * identity/passthrough 域里 IOVA == PA，可以放行。
+ */
+static int cvm_attach(struct dma_buf *dmabuf, struct dma_buf_attachment *attach)
+{
+	struct iommu_domain *domain;
+
+	if (!attach->dev)
+		return 0;
+
+	domain = iommu_get_domain_for_dev(attach->dev);
+	if (!domain)
+		return 0;   /* 没有 IOMMU 域，物理地址直通 */
+
+	if (domain->type == IOMMU_DOMAIN_IDENTITY)
+		return 0;   /* 直通域，IOVA == PA */
+
+	dev_err(attach->dev,
+		"cvm_shared: device sits behind an IOMMU domain (type %u); "
+		"raw physical addresses would be misinterpreted as IOVAs. "
+		"Refusing to attach.\n", domain->type);
+	return -EOPNOTSUPP;
+}
+
 static struct sg_table *cvm_map_dma_buf(struct dma_buf_attachment *attach,
 					enum dma_data_direction dir)
 {
@@ -328,13 +358,19 @@ static void cvm_release(struct dma_buf *dmabuf)
 	 * 进程崩溃时内核自动关闭 fd，同样走到这里，所以不需要额外的
 	 * 崩溃清理逻辑。这是相对 set_shared.ko 最重要的改进。
 	 */
+	pr_info("release: refcount dropped to zero, converting %zu bytes back to private\n",
+		buf->size);
+
 	sg_free_table(&buf->sgt);
 	cvm_set_encrypted(buf);
 	cvm_free_chunks(buf);
 	kfree(buf);
+
+	pr_info("release: done\n");
 }
 
 static const struct dma_buf_ops cvm_dma_buf_ops = {
+	.attach        = cvm_attach,
 	.map_dma_buf   = cvm_map_dma_buf,
 	.unmap_dma_buf = cvm_unmap_dma_buf,
 	.release       = cvm_release,
@@ -466,6 +502,102 @@ static int cvm_do_layout(struct cvm_shared_layout *req)
 	return ret;
 }
 
+/* 由 (offset, seed) 决定的确定性图案，两侧独立生成、互相比对 */
+static inline u64 cvm_pattern(u64 off, u64 seed)
+{
+	return seed ^ (off * 0x9E3779B97F4A7C15ULL) ^ 0x5851F42D4C957F2DULL;
+}
+
+/*
+ * 跨映射校验：**通过直接映射**（page_address）访问这些页。
+ * 用户态那一侧走的是 mmap 出来的映射。两条路径的页表项各自独立，
+ * C-bit 只要有一侧处理错了，这里比对就会失败。
+ */
+static int cvm_do_xcheck(struct cvm_shared_xcheck *req)
+{
+	struct dma_buf *dmabuf;
+	struct cvm_buffer *buf;
+	u64 off, end;
+	unsigned int i;
+	int ret = 0;
+
+	dmabuf = dma_buf_get(req->fd);
+	if (IS_ERR(dmabuf))
+		return PTR_ERR(dmabuf);
+	if (dmabuf->ops != &cvm_dma_buf_ops) {
+		dma_buf_put(dmabuf);
+		return -EINVAL;
+	}
+	buf = dmabuf->priv;
+
+	if (req->op != CVM_XCHECK_WRITE && req->op != CVM_XCHECK_VERIFY) {
+		ret = -EINVAL;
+		goto out;
+	}
+	/* 只按 8 字节粒度操作，省掉边界处理 */
+	if ((req->offset | req->len) & 7 || !req->len) {
+		ret = -EINVAL;
+		goto out;
+	}
+	if (req->offset > buf->size || req->len > buf->size - req->offset) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	req->bad_off = ~0ULL;
+	off = req->offset;
+	end = req->offset + req->len;
+
+	/* 定位到起始块 */
+	for (i = 0; i < buf->nr_chunks && off < end; i++) {
+		u64 chunk_len = PAGE_SIZE << buf->chunks[i].order;
+		u64 chunk_start = 0, k;
+		u64 *kaddr;
+
+		/* 累加出本块在整个 buffer 中的起始偏移 */
+		{
+			unsigned int j;
+			for (j = 0; j < i; j++)
+				chunk_start += PAGE_SIZE << buf->chunks[j].order;
+		}
+
+		if (off >= chunk_start + chunk_len)
+			continue;
+
+		kaddr = (u64 *)page_address(buf->chunks[i].page);
+
+		for (k = off - chunk_start;
+		     k < chunk_len && chunk_start + k < end; k += 8) {
+			u64 abs = chunk_start + k;
+			u64 want = cvm_pattern(abs, req->seed);
+			u64 *slot = kaddr + (k / 8);
+
+			if (req->op == CVM_XCHECK_WRITE) {
+				*slot = want;
+			} else {
+				u64 got = *slot;
+
+				if (got != want) {
+					req->bad_off = abs;
+					req->got = got;
+					req->want = want;
+					goto out;
+				}
+			}
+		}
+
+		off = chunk_start + chunk_len;
+	}
+
+	/* 写入后要确保对其它映射可见 */
+	if (req->op == CVM_XCHECK_WRITE)
+		wmb();
+
+out:
+	dma_buf_put(dmabuf);
+	return ret;
+}
+
 static long cvm_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	void __user *uarg = (void __user *)arg;
@@ -506,6 +638,19 @@ static long cvm_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		if (copy_from_user(&req, uarg, sizeof(req)))
 			return -EFAULT;
 		ret = cvm_do_layout(&req);
+		if (ret)
+			return ret;
+		if (copy_to_user(uarg, &req, sizeof(req)))
+			return -EFAULT;
+		return 0;
+	}
+	case CVM_SHARED_IOC_XCHECK: {
+		struct cvm_shared_xcheck req;
+		int ret;
+
+		if (copy_from_user(&req, uarg, sizeof(req)))
+			return -EFAULT;
+		ret = cvm_do_xcheck(&req);
 		if (ret)
 			return ret;
 		if (copy_to_user(uarg, &req, sizeof(req)))

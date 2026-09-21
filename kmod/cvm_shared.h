@@ -51,8 +51,32 @@ struct cvm_shared_layout {
 	__u32 pad;
 };
 
+/*
+ * 跨映射校验：内核通过直接映射访问，用户态通过 mmap 访问，
+ * 两边看到的必须是同一份数据。C-bit 只在一侧处理对了的话，这里会露馅。
+ *
+ * op = CVM_XCHECK_WRITE  : 内核按 seed 生成图案写入直接映射
+ * op = CVM_XCHECK_VERIFY : 内核从直接映射读出并与 seed 图案比对
+ *
+ * 失败时 bad_off 给出第一个不一致的偏移，got/want 给出实际值和期望值。
+ */
+#define CVM_XCHECK_WRITE  0
+#define CVM_XCHECK_VERIFY 1
+
+struct cvm_shared_xcheck {
+	__s32 fd;
+	__u32 op;
+	__u64 offset;
+	__u64 len;
+	__u64 seed;
+	__u64 bad_off;   /* 出参，~0ULL 表示全部一致 */
+	__u64 got;       /* 出参 */
+	__u64 want;      /* 出参 */
+};
+
 #define CVM_SHARED_IOC_MAGIC 'C'
 #define CVM_SHARED_IOC_ALLOC  _IOWR(CVM_SHARED_IOC_MAGIC, 0x01, struct cvm_shared_alloc)
 #define CVM_SHARED_IOC_LAYOUT _IOWR(CVM_SHARED_IOC_MAGIC, 0x02, struct cvm_shared_layout)
+#define CVM_SHARED_IOC_XCHECK _IOWR(CVM_SHARED_IOC_MAGIC, 0x03, struct cvm_shared_xcheck)
 
 #endif /* _UAPI_CVM_SHARED_H */

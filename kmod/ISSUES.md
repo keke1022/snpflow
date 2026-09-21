@@ -76,11 +76,23 @@ GPA 即设备地址）。若将来给 guest 加了 vIOMMU，这里必须改成�
 **正式版必须删掉** —— 向用户态泄露物理地址是信息泄露，会削弱 KASLR 之类
 的防护。
 
-### C3. `remap_pfn_range` 带来 VM_PFNMAP 的副作用
-分块调用 `remap_pfn_range` 会给 vma 打上 `VM_IO|VM_PFNMAP|VM_DONTEXPAND`。
-后果是这段用户内存**不能再被 `get_user_pages()` pin 住**。
-当前不影响（我们通过 dmabuf fd 注册，不走用户 VA 路径），但如果将来想让
-其它组件按 VA 注册这块内存，会失败。
+### C3. VM_PFNMAP：这段内存不能走 ibv_reg_mr —— 对 DPDK 有硬性约束
+分块调用 `remap_pfn_range` 会给 vma 打上 `VM_IO|VM_PFNMAP|VM_DONTEXPAND`，
+这段用户内存**不能被 `get_user_pages()` pin 住**。
+
+注册只能走 dmabuf fd 这条路（`devx_umem_reg_ex` / `ibv_reg_dmabuf_mr`），
+**按用户 VA 的 `ibv_reg_mr` 一定会失败**。
+
+对 DPDK 侧的直接要求：
+
+- **MR 缓存必须预先填充。** 在队列启动前就把共享区的「地址范围 → lkey」
+  全部登记进 `mlx5_mr_btree`。
+- **收发包路径上不能出现退回普通注册的情况。** mlx5 的 MR 缓存在查不到
+  地址时会走 miss 路径去现场 `ibv_reg_mr`（`mlx5_mr_create_primary` 一类）。
+  对共享区内存这条退路是死路，而且失败发生在数据面，表现为丢包或卡死，
+  不是启动时的明确报错。
+- 因此需要在 miss 路径上对共享区地址加一个显式拒绝 + 告警，
+  让它在开发期就暴露，而不是静默退化。
 
 ### C4. 没有 NUMA 亲和
 `alloc_pages()` 没指定 node，拿到的页可能跨 NUMA。这台机器是双路 EPYC，
@@ -121,6 +133,47 @@ GPA 即设备地址）。若将来给 guest 加了 vIOMMU，这里必须改成�
 没做过压力测试。C5 提到的直接映射拆分在反复做的时候会不会出问题，未知。
 
 ---
+
+## 补充验证（2026-09-21，应要求追加）
+
+### V1. 跨映射校验 —— 通过
+16MB 缓冲区，两个方向各校验全部 8 字节槽位：
+- 方向 A：用户态经 mmap 写入 → 内核经直接映射（`page_address`）读出，全部一致
+- 方向 B：内核经直接映射写入 → 用户态经 mmap 读出，全部一致
+
+两条路径的页表项互相独立，C-bit 任一侧处理错都会在这里暴露。
+
+### V2. swiotlb 占用计数 —— 零变化
+```
+注册前 io_tlb_used = 81262 slabs (158.71 MB)
+注册后 io_tlb_used = 81262 slabs (158.71 MB)
+注销后 io_tlb_used = 81262 slabs
+```
+注册 16MB 内存，swiotlb 占用**一个 slab 都没动**。这比「dmesg 里没有
+报错」强得多 —— 后者只能证明没失败，前者直接证明没经过。
+
+### V3. IOMMU 拦截 —— 已实现为硬性检查
+`cvm_attach()` 里调用 `iommu_get_domain_for_dev()`：域为 NULL 或
+`IOMMU_DOMAIN_IDENTITY` 放行，其它类型返回 `-EOPNOTSUPP` 并打印
+带设备名的明确原因。不再只是注释里的前提说明。
+
+当前环境网卡没有 IOMMU 域，attach 通过。
+
+### V4. close(fd) 先于 munmap —— 页不会被提前转回
+用 `/dev/kmsg` 打标记，使用户态动作与内核事件在同一条时间线上对齐：
+
+```
+allocated 16777216 bytes
+>>> BEFORE close(fd)
+>>> AFTER close(fd)                    ← 此处没有 release
+>>> BEFORE munmap
+release: refcount dropped to zero      ← release 发生在 munmap 内部
+release: done
+>>> AFTER munmap
+```
+
+结论：vma 持有 dma-buf 的引用，`close(fd)` 只减一次引用计数，
+页在 `munmap` 之后才转回私有。这是直接证据而非时间戳推断。
 
 ## 实测结论（2026-09-21）
 
