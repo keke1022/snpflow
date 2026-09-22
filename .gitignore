@@ -3,3 +3,5 @@
 *.mod*
 build/
 snp-probe
+dpdk-patches/*.patch
+dpdk-patches/all.patch

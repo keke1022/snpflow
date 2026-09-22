@@ -1,0 +1,171 @@
+From fc1a57cc5aa699721d5b4496ded90a0cdfec518f Mon Sep 17 00:00:00 2001
+From: keke1022 <keke83space@gmail.com>
+Date: Tue, 22 Sep 2026 18:23:20 +0000
+Subject: [PATCH 5/5] =?UTF-8?q?=E8=A1=A5=E9=BD=90=E8=AF=8A=E6=96=AD?=
+ =?UTF-8?q?=E5=AE=88=E5=8D=AB:=20=E8=AE=A9=E4=B8=8D=E6=BB=A1=E8=B6=B3?=
+ =?UTF-8?q?=E5=89=8D=E6=8F=90=E7=9A=84=E7=8E=AF=E5=A2=83=E7=BB=99=E5=87=BA?=
+ =?UTF-8?q?=E5=8F=AF=E7=90=86=E8=A7=A3=E7=9A=84=E5=A4=B1=E8=B4=A5?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+四处原本会在底层给出难懂错误的路径, 改为就地说清原因:
+- obj_ops 退回 verbs: CVM 下直接 ENOTSUP, 提示查 DevX 支持
+- lpbk_mode: CVM 下拒绝, 点明依赖 verbs 对象
+- wrapped_mkey_create: CVM 下 ENOTSUP 并注明改法(未实现纯 DevX 版本,
+  因当前调用方走不到, 不引入无测试覆盖的代码)
+- MR 数据面 miss 命中共享区: 告警, 使预填缺失在开发期暴露
+
+回归: 164 万包 macswap 往返, 零丢弃, 四个守卫零误报。
+其中 MR miss 告警一次未出现, 证实 MR 缓存在队列启动前已填好。
+---
+ drivers/common/mlx5/linux/mlx5_common_os.c | 27 ++++++++++++++++++----
+ drivers/common/mlx5/mlx5_common_mr.c       | 13 +++++++++++
+ drivers/net/mlx5/linux/mlx5_os.c           | 13 +++++++++++
+ drivers/net/mlx5/linux/mlx5_verbs.c        | 15 ++++++++++++
+ 4 files changed, 64 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/common/mlx5/linux/mlx5_common_os.c b/drivers/common/mlx5/linux/mlx5_common_os.c
+index 0fe4deb..420805f 100644
+--- a/drivers/common/mlx5/linux/mlx5_common_os.c
++++ b/drivers/common/mlx5/linux/mlx5_common_os.c
+@@ -22,6 +22,7 @@
+ #include "mlx5_common.h"
+ #include "mlx5_nl.h"
+ #include "mlx5_common_log.h"
++#include "mlx5_cvm_shared.h"
+ #include "mlx5_common_private.h"
+ #include "mlx5_common_defs.h"
+ #include "mlx5_common_os.h"
+@@ -1006,11 +1007,29 @@ mlx5_os_wrapped_mkey_create(void *ctx, void *pd, uint32_t pdn, void *addr,
+ 		.klm_num = 1,
+ 	};
+ 	struct mlx5_devx_obj *mkey;
+-	struct ibv_mr *ibv_mr = mlx5_glue->reg_mr(pd, addr, length,
+-						  IBV_ACCESS_LOCAL_WRITE |
+-						  (haswell_broadwell_cpu ? 0 :
+-						  IBV_ACCESS_RELAXED_ORDERING));
++	struct ibv_mr *ibv_mr;
+ 
++	/*
++	 * 机密虚拟机下这条路走不通：本函数先用 ibv_reg_mr 注册再包一层
++	 * mkey，而 SNP guest 里普通内存是私有加密页（EIO），共享区内存
++	 * 又带 VM_PFNMAP（EFAULT），两种都过不了 ibv_reg_mr。
++	 *
++	 * 目前调用方是流计数器路径。与其让它在底层给出难懂的错误，
++	 * 不如在这里说清楚原因。真要支持需照 Windows 版改成纯 DevX
++	 * （devx_umem_reg_ex + mkey_create），见 mlx5_common_devx_reg_mr_dmabuf。
++	 */
++	if (mlx5_cvm_shared_enabled()) {
++		DRV_LOG(ERR,
++			"机密虚拟机下 mlx5_os_wrapped_mkey_create 不可用："
++			"它依赖 ibv_reg_mr。需改为纯 DevX 路径。");
++		rte_errno = ENOTSUP;
++		return -rte_errno;
++	}
++
++	ibv_mr = mlx5_glue->reg_mr(pd, addr, length,
++				   IBV_ACCESS_LOCAL_WRITE |
++				   (haswell_broadwell_cpu ? 0 :
++				    IBV_ACCESS_RELAXED_ORDERING));
+ 	if (!ibv_mr) {
+ 		rte_errno = errno;
+ 		return -rte_errno;
+diff --git a/drivers/common/mlx5/mlx5_common_mr.c b/drivers/common/mlx5/mlx5_common_mr.c
+index 8ed988d..d3ab7db 100644
+--- a/drivers/common/mlx5/mlx5_common_mr.c
++++ b/drivers/common/mlx5/mlx5_common_mr.c
+@@ -16,6 +16,7 @@
+ #include "mlx5_common.h"
+ #include "mlx5_common_mp.h"
+ #include "mlx5_common_mr.h"
++#include "mlx5_cvm_shared.h"
+ #include "mlx5_common_os.h"
+ #include "mlx5_common_log.h"
+ #include "mlx5_malloc.h"
+@@ -1039,6 +1040,18 @@ mr_lookup_caches(struct mlx5_mr_ctrl *mr_ctrl,
+ 	}
+ 	rte_rwlock_read_unlock(&share_cache->rwlock);
+ 	/* First time to see the address? Create a new MR. */
++	/*
++	 * 数据面查不到 MR 时会走到这里现场注册。对共享区地址而言，
++	 * 这条退路本身是可行的（reg_mr 回调已改道 dma-buf），但它意味着
++	 * MR 缓存没有被正确预填 —— 在收发包途中做注册会造成明显抖动，
++	 * 且一旦注册失败表现为丢包而非明确错误。
++	 *
++	 * 因此这里给出告警，使问题在开发期就暴露，而不是静默退化。
++	 */
++	if (mlx5_cvm_shared_contains((const void *)addr))
++		DRV_LOG(WARNING,
++			"数据面 MR 缓存未命中共享区地址 0x%" PRIxPTR "，"
++			"正在途中注册。应在队列启动前预填 MR 缓存。", addr);
+ 	lkey = mlx5_mr_create(cdev, share_cache, entry, addr);
+ 	/*
+ 	 * Update the local cache if successfully created a new global MR. Even
+diff --git a/drivers/net/mlx5/linux/mlx5_os.c b/drivers/net/mlx5/linux/mlx5_os.c
+index 86f32ff..0475b9e 100644
+--- a/drivers/net/mlx5/linux/mlx5_os.c
++++ b/drivers/net/mlx5/linux/mlx5_os.c
+@@ -33,6 +33,7 @@
+ #include <mlx5_glue.h>
+ #include <mlx5_devx_cmds.h>
+ #include <mlx5_common.h>
++#include <mlx5_cvm_shared.h>
+ #include <mlx5_common_mp.h>
+ #include <mlx5_common_mr.h>
+ #include <mlx5_malloc.h>
+@@ -1807,6 +1808,18 @@ mlx5_dev_spawn(struct rte_device *dpdk_dev,
+ 		DRV_LOG(ERR, "must enable DV and ESW when RDMA link ports > 255");
+ 		err = ENOTSUP;
+ 		goto error;
++	} else if (mlx5_cvm_shared_enabled()) {
++		/*
++		 * 机密虚拟机里 verbs 路径不可用：ibv_create_cq 等对象的
++		 * 缓冲区由 rdma-core 在用户态分配，那是私有加密页，
++		 * 注册返回 EIO。这里如果静默退回 verbs，失败会推迟到
++		 * 队列创建时，表现为一串难以理解的底层错误。
++		 */
++		DRV_LOG(ERR,
++			"机密虚拟机下必须使用 DevX 队列对象，但本设备/配置"
++			"不支持。请确认网卡固件支持 DevX，且未强制 verbs 路径。");
++		err = ENOTSUP;
++		goto error;
+ 	} else {
+ 		priv->obj_ops = ibv_obj_ops;
+ 	}
+diff --git a/drivers/net/mlx5/linux/mlx5_verbs.c b/drivers/net/mlx5/linux/mlx5_verbs.c
+index 01d3d6a..1b8cc26 100644
+--- a/drivers/net/mlx5/linux/mlx5_verbs.c
++++ b/drivers/net/mlx5/linux/mlx5_verbs.c
+@@ -20,6 +20,7 @@
+ 
+ #include <mlx5_glue.h>
+ #include <mlx5_common.h>
++#include <mlx5_cvm_shared.h>
+ #include <mlx5_common_mr.h>
+ #include <mlx5_verbs.h>
+ #include <mlx5_rx.h>
+@@ -563,6 +564,20 @@ mlx5_ibv_hrxq_new(struct rte_eth_dev *dev, struct mlx5_hrxq *hrxq,
+ 		qp_init_attr.create_flags = MLX5DV_QP_CREATE_TUNNEL_OFFLOADS;
+ 	}
+ #ifdef HAVE_IBV_FLOW_DV_SUPPORT
++	if (dev->data->dev_conf.lpbk_mode && mlx5_cvm_shared_enabled()) {
++		/*
++		 * 环回模式要建 verbs 的 CQ/QP，而机密虚拟机里 rdma-core
++		 * 在用户态分配的缓冲区是私有加密页，注册返回 EIO。
++		 * 与其让它在 dv_create_cq 里给出难懂的失败，不如在这里
++		 * 直接说清楚。
++		 */
++		DRV_LOG(ERR,
++			"port %u 机密虚拟机下不支持环回模式（lpbk_mode）："
++			"它依赖 verbs 对象，而 verbs 缓冲区在 SNP 下无法注册。",
++			dev->data->port_id);
++		rte_errno = ENOTSUP;
++		return -rte_errno;
++	}
+ 	if (dev->data->dev_conf.lpbk_mode) {
+ 		/* Allow packet sent from NIC loop back w/o source MAC check. */
+ 		qp_init_attr.comp_mask |=
+-- 
+2.53.0
+

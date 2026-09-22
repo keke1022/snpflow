@@ -1,0 +1,93 @@
+From 7345b49815f3bfdde3628ec645e71732e2e5c0a4 Mon Sep 17 00:00:00 2001
+From: keke1022 <keke83space@gmail.com>
+Date: Tue, 22 Sep 2026 04:39:30 +0000
+Subject: [PATCH 1/5] =?UTF-8?q?common/mlx5:=20=E4=B8=BA=20glue=20=E5=B1=82?=
+ =?UTF-8?q?=E5=A2=9E=E5=8A=A0=20devx=5Fumem=5Freg=5Fex?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+SNP guest 里普通内存与大页均为私有加密页，设备无法 DMA，
+ibv_reg_mr 与 devx_umem_reg 一律返回 EIO。可行路径是由内核分配
+已转共享的内存并以 dma-buf 导出，再用 mlx5dv_devx_umem_reg_ex 注册。
+
+25.11 的 glue 层只有 devx_umem_reg，此处补上 _ex 变体、
+meson 符号探测与 vtable 注册。
+---
+ drivers/common/mlx5/linux/meson.build |  2 ++
+ drivers/common/mlx5/linux/mlx5_glue.c | 25 +++++++++++++++++++++++++
+ drivers/common/mlx5/linux/mlx5_glue.h |  2 ++
+ 3 files changed, 29 insertions(+)
+
+diff --git a/drivers/common/mlx5/linux/meson.build b/drivers/common/mlx5/linux/meson.build
+index 3767e7a..815239b 100644
+--- a/drivers/common/mlx5/linux/meson.build
++++ b/drivers/common/mlx5/linux/meson.build
+@@ -215,6 +215,8 @@ has_sym_args = [
+             'MLX5DV_CONTEXT_MASK_REG_C0' ],
+         [ 'HAVE_MLX5DV_FLOW_ACTION_COUNTERS_DEVX_WITH_OFFSET', 'infiniband/mlx5dv.h',
+             'MLX5DV_FLOW_ACTION_COUNTERS_DEVX_WITH_OFFSET' ],
++        [ 'HAVE_MLX5DV_DEVX_UMEM_REG_EX', 'infiniband/mlx5dv.h',
++            'mlx5dv_devx_umem_reg_ex' ],
+ ]
+ if  libmtcr_ul_found
+     has_sym_args += [
+diff --git a/drivers/common/mlx5/linux/mlx5_glue.c b/drivers/common/mlx5/linux/mlx5_glue.c
+index a91eaa4..6f752c4 100644
+--- a/drivers/common/mlx5/linux/mlx5_glue.c
++++ b/drivers/common/mlx5/linux/mlx5_glue.c
+@@ -1192,6 +1192,30 @@ mlx5_glue_devx_umem_reg(struct ibv_context *context, void *addr, size_t size,
+ #endif
+ }
+ 
++/*
++ * devx_umem_reg 的扩展版本，支持以 dma-buf fd 注册内存。
++ *
++ * 机密虚拟机（SEV-SNP）里普通内存与大页都是私有加密页，设备无法 DMA，
++ * ibv_reg_mr 与 devx_umem_reg 一律返回 EIO。可行的做法是由内核侧分配
++ * 「已转共享」的内存并以 dma-buf 导出，再经此接口注册给设备。
++ *
++ * 注意：umem_in->pgsz_bitmap 必须非 0。为 0 时 rdma-core 返回 EINVAL，
++ * 容易被误判成「不支持 dma-buf」。
++ */
++static struct mlx5dv_devx_umem *
++mlx5_glue_devx_umem_reg_ex(struct ibv_context *ctx,
++			   struct mlx5dv_devx_umem_in *umem_in)
++{
++#ifdef HAVE_MLX5DV_DEVX_UMEM_REG_EX
++	return mlx5dv_devx_umem_reg_ex(ctx, umem_in);
++#else
++	(void)ctx;
++	(void)umem_in;
++	errno = ENOTSUP;
++	return NULL;
++#endif
++}
++
+ static int
+ mlx5_glue_devx_umem_dereg(struct mlx5dv_devx_umem *dv_devx_umem)
+ {
+@@ -1692,6 +1716,7 @@ const struct mlx5_glue *mlx5_glue = &(const struct mlx5_glue) {
+ 	.devx_obj_query_async = mlx5_glue_devx_obj_query_async,
+ 	.devx_get_async_cmd_comp = mlx5_glue_devx_get_async_cmd_comp,
+ 	.devx_umem_reg = mlx5_glue_devx_umem_reg,
++	.devx_umem_reg_ex = mlx5_glue_devx_umem_reg_ex,
+ 	.devx_umem_dereg = mlx5_glue_devx_umem_dereg,
+ 	.devx_qp_query = mlx5_glue_devx_qp_query,
+ 	.devx_wq_query = mlx5_glue_devx_wq_query,
+diff --git a/drivers/common/mlx5/linux/mlx5_glue.h b/drivers/common/mlx5/linux/mlx5_glue.h
+index 81d6b0a..712df3f 100644
+--- a/drivers/common/mlx5/linux/mlx5_glue.h
++++ b/drivers/common/mlx5/linux/mlx5_glue.h
+@@ -354,6 +354,8 @@ struct mlx5_glue {
+ 	struct mlx5dv_devx_umem *(*devx_umem_reg)(struct ibv_context *context,
+ 						  void *addr, size_t size,
+ 						  uint32_t access);
++	struct mlx5dv_devx_umem *(*devx_umem_reg_ex)(struct ibv_context *ctx,
++						     struct mlx5dv_devx_umem_in *umem_in);
+ 	int (*devx_umem_dereg)(struct mlx5dv_devx_umem *dv_devx_umem);
+ 	int (*devx_qp_query)(struct ibv_qp *qp,
+ 			     const void *in, size_t inlen,
+-- 
+2.53.0
+

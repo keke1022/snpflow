@@ -1,0 +1,427 @@
+From acaa9595c0ae74586a3f17094381837b103a4137 Mon Sep 17 00:00:00 2001
+From: keke1022 <keke83space@gmail.com>
+Date: Tue, 22 Sep 2026 18:19:45 +0000
+Subject: [PATCH 4/5] =?UTF-8?q?HWS=20DevX=20CQ=20+=20testpmd=20=E5=85=B1?=
+ =?UTF-8?q?=E4=BA=AB=E5=8C=BA=20extbuf=20+=20PMD=20=E5=86=85=E5=AD=98?=
+ =?UTF-8?q?=E5=AE=89=E5=85=A8=E6=A0=A1=E9=AA=8C?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- HWS 发送环 CQ 由 ibv_create_cq 改为 mlx5_devx_cq_create
+- HWS buf/db 改走 mlx5_os_umem_reg 注册, close 路径 free -> mlx5_free
+- testpmd setup_extbuf 从 cvm_shared 取内存, buf_iova 填 VA
+- 驱动 lookup 增加内核 LOOKUP 回落(应用自持共享区的情形)
+- PMD 内存安全: mini-CQE 计数与 RX/TX wqe_counter 加校验
+---
+ app/test-pmd/testpmd.c                      | 120 ++++++++++++++++++++
+ drivers/common/mlx5/linux/mlx5_cvm_shared.c |  75 ++++++++++--
+ drivers/net/mlx5/hws/mlx5dr_send.c          |   5 +-
+ drivers/net/mlx5/mlx5_rx.c                  |  39 ++++++-
+ drivers/net/mlx5/mlx5_rx.h                  |  36 ++++++
+ drivers/net/mlx5/mlx5_tx.c                  |   8 +-
+ 6 files changed, 267 insertions(+), 16 deletions(-)
+
+diff --git a/app/test-pmd/testpmd.c b/app/test-pmd/testpmd.c
+index 4568e2f..3f43760 100644
+--- a/app/test-pmd/testpmd.c
++++ b/app/test-pmd/testpmd.c
+@@ -13,6 +13,7 @@
+ #include <sys/mman.h>
+ #endif
+ #include <sys/types.h>
++#include <sys/ioctl.h>
+ #include <errno.h>
+ #include <stdbool.h>
+ 
+@@ -1127,6 +1128,101 @@ dma_map_cb(struct rte_mempool *mp __rte_unused, void *opaque __rte_unused,
+ }
+ #endif
+ 
++
++/*
++ * 机密虚拟机（SEV-SNP）下的外部内存来源。
++ *
++ * SNP guest 里普通内存与大页都是私有加密页，设备无法 DMA，
++ * 注册阶段返回 EIO。cvm_shared 内核模块提供「已转共享且不经 swiotlb」
++ * 的内存，以 dma-buf 导出。
++ *
++ * 这里是应用侧的用法示范：自己申请、自己登记进 EAL，
++ * 再交给 rte_pktmbuf_pool_create_extbuf()。
++ */
++#define CVM_SHARED_DEV "/dev/cvm_shared"
++
++struct cvm_shared_alloc_req {
++	uint64_t size;
++	uint32_t flags;
++	int32_t fd;
++};
++
++#define CVM_SHARED_IOC_ALLOC _IOWR('C', 0x01, struct cvm_shared_alloc_req)
++
++/* 返回映射地址，失败返回 NULL（表示本机不是机密虚拟机，走原路） */
++static void *
++cvm_shared_get(size_t size)
++{
++	struct cvm_shared_alloc_req req;
++	size_t page_sz = (size_t)sysconf(_SC_PAGESIZE);  /* 应用侧不能用 rte_mem_page_size，非公开 ABI */
++
++	/*
++	 * rte_extmem_register 要求 len 与 va 都按 page_sz 对齐，
++	 * 而 EXTBUF_ZONE_SIZE 是 2MB-256B，故意不对齐。
++	 * 这里向上取整，多出的尾部不会被切成分区，不影响正确性。
++	 */
++	size = RTE_ALIGN_CEIL(size, page_sz);
++	req.size = size;
++	req.flags = 0;
++	req.fd = -1;
++	rte_iova_t *iovas;
++	unsigned int i, n_pages;
++	void *va;
++	int dev;
++
++	dev = open(CVM_SHARED_DEV, O_RDWR);
++	if (dev < 0)
++		return NULL;                    /* 非机密虚拟机 */
++	if (ioctl(dev, CVM_SHARED_IOC_ALLOC, &req) < 0) {
++		TESTPMD_LOG(ERR, "cvm_shared: 申请 %zu 字节失败: %s\n",
++			    size, strerror(errno));
++		close(dev);
++		return NULL;
++	}
++	close(dev);
++
++	va = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, req.fd, 0);
++	if (va == MAP_FAILED) {
++		TESTPMD_LOG(ERR, "cvm_shared: 映射失败: %s\n", strerror(errno));
++		close(req.fd);
++		return NULL;
++	}
++
++	/*
++	 * 登记进 EAL，否则 mlx5 的 mlx5_mr_create() 里
++	 * rte_mem_virt2memseg_list() 查不到这块内存。
++	 * iova_addrs 不能传 NULL（那会置成 RTE_BAD_IOVA），
++	 * 显式填 IOVA == VA，需配合 --iova-mode=va。
++	 */
++	n_pages = size / page_sz;
++	iovas = malloc(sizeof(*iovas) * n_pages);
++	if (iovas == NULL) {
++		munmap(va, size);
++		close(req.fd);
++		return NULL;
++	}
++	for (i = 0; i < n_pages; i++)
++		iovas[i] = (rte_iova_t)(uintptr_t)va + (rte_iova_t)i * page_sz;
++	if (rte_extmem_register(va, size, iovas, n_pages, page_sz) != 0) {
++		TESTPMD_LOG(ERR,
++			    "cvm_shared: rte_extmem_register 失败: %s"
++			    " (va=%p len=%zu page_sz=%zu n_pages=%u)\n",
++			    rte_strerror(rte_errno), va, size, page_sz, n_pages);
++		free(iovas);
++		munmap(va, size);
++		close(req.fd);
++		return NULL;
++	}
++	free(iovas);
++
++	TESTPMD_LOG(INFO,
++		    "cvm_shared: 外部内存就绪 va=%p size=%zu（IOVA=VA）\n",
++		    va, size);
++	/* fd 故意不关：dma-buf 引用计数要等 munmap 之后才归零，
++	 * 但保留 fd 可以让区域在进程生命周期内稳定存在。 */
++	return va;
++}
++
+ static unsigned int
+ setup_extbuf(uint32_t nb_mbufs, uint16_t mbuf_sz, unsigned int socket_id,
+ 	    char *pool_name, struct rte_pktmbuf_extmem **ext_mem)
+@@ -1134,6 +1230,7 @@ setup_extbuf(uint32_t nb_mbufs, uint16_t mbuf_sz, unsigned int socket_id,
+ 	struct rte_pktmbuf_extmem *xmem;
+ 	unsigned int ext_num, zone_num, elt_num;
+ 	uint16_t elt_size;
++	void *cvm_base;
+ 
+ 	elt_size = RTE_ALIGN_CEIL(mbuf_sz, RTE_CACHE_LINE_SIZE);
+ 	elt_num = EXTBUF_ZONE_SIZE / elt_size;
+@@ -1146,6 +1243,29 @@ setup_extbuf(uint32_t nb_mbufs, uint16_t mbuf_sz, unsigned int socket_id,
+ 		*ext_mem = NULL;
+ 		return 0;
+ 	}
++	/*
++	 * 机密虚拟机下改从 cvm_shared 取内存：普通 memzone 背后是私有
++	 * 加密页，设备注册会返回 EIO。一次申请全部分区，避免多次
++	 * extmem_register 产生零碎区间。
++	 */
++	cvm_base = cvm_shared_get((size_t)EXTBUF_ZONE_SIZE * zone_num);
++	if (cvm_base != NULL) {
++		for (ext_num = 0; ext_num < zone_num; ext_num++) {
++			struct rte_pktmbuf_extmem *xseg = xmem + ext_num;
++			void *p = (uint8_t *)cvm_base +
++				  (size_t)EXTBUF_ZONE_SIZE * ext_num;
++
++			xseg->buf_ptr = p;
++			/* IOVA == VA，与共享区的登记方式和 mkey 的
++			 * start_addr 保持一致 */
++			xseg->buf_iova = (rte_iova_t)(uintptr_t)p;
++			xseg->buf_len = EXTBUF_ZONE_SIZE;
++			xseg->elt_size = elt_size;
++		}
++		*ext_mem = xmem;
++		return ext_num;
++	}
++
+ 	for (ext_num = 0; ext_num < zone_num; ext_num++) {
+ 		struct rte_pktmbuf_extmem *xseg = xmem + ext_num;
+ 		const struct rte_memzone *mz;
+diff --git a/drivers/common/mlx5/linux/mlx5_cvm_shared.c b/drivers/common/mlx5/linux/mlx5_cvm_shared.c
+index fcc38f2..4f34cd6 100644
+--- a/drivers/common/mlx5/linux/mlx5_cvm_shared.c
++++ b/drivers/common/mlx5/linux/mlx5_cvm_shared.c
+@@ -38,6 +38,22 @@ struct cvm_shared_alloc_req {
+ #define CVM_SHARED_IOC_ALLOC \
+ 	_IOWR(CVM_SHARED_IOC_MAGIC, 0x01, struct cvm_shared_alloc_req)
+ 
++/*
++ * 按虚拟地址反查归属。存在多方各自申请共享内存的情况
++ * （驱动一块、应用自己一块），任何一方都掌握不了全部区间，
++ * 但内核知道全部映射。返回的 fd 是新的，用完要 close。
++ */
++struct cvm_shared_lookup_req {
++	uint64_t va;
++	int32_t fd;
++	uint32_t pad;
++	uint64_t offset;
++	uint64_t len;
++};
++
++#define CVM_SHARED_IOC_LOOKUP \
++	_IOWR(CVM_SHARED_IOC_MAGIC, 0x04, struct cvm_shared_lookup_req)
++
+ /** 默认共享区大小。队列、驱动杂项内存与 mbuf 数据区都从这里出。 */
+ #define CVM_DEFAULT_REGION_SIZE (512ull << 20)
+ 
+@@ -307,22 +323,67 @@ mlx5_cvm_shared_contains(const void *addr)
+ 	uintptr_t a = (uintptr_t)addr;
+ 	uintptr_t base = (uintptr_t)cvm.base;
+ 
++	/*
++	 * 只判断驱动自己的区。应用自行申请的共享内存由应用负责释放，
++	 * 不会经过 mlx5_free()，所以这里不需要（也不应该）覆盖它们。
++	 */
+ 	if (!cvm.enabled || cvm.base == NULL)
+ 		return false;
+ 	return a >= base && a < base + cvm.len;
+ }
+ 
++/*
++ * 问内核：这个地址属于哪块共享缓冲区？
++ *
++ * 应用可能自己向 /dev/cvm_shared 申请内存（例如 testpmd 的
++ * pinned-extbuf 池），那些区间不在驱动的记录里。内核掌握全部映射，
++ * 因此查不到时回落到内核查询。
++ *
++ * 返回的 fd 每次都是新的。注册用完即可关闭 —— umem 注册期间
++ * 内核侧已持有自己的引用。
++ */
++static bool
++cvm_kernel_lookup(const void *addr, int *fd, size_t *offset)
++{
++	struct cvm_shared_lookup_req req;
++	int dev;
++	bool ok = false;
++
++	if (!cvm.enabled)
++		return false;
++
++	dev = open(CVM_SHARED_DEV, O_RDWR);
++	if (dev < 0)
++		return false;
++
++	memset(&req, 0, sizeof(req));
++	req.va = (uint64_t)(uintptr_t)addr;
++	if (ioctl(dev, CVM_SHARED_IOC_LOOKUP, &req) == 0 && req.fd >= 0) {
++		if (fd != NULL)
++			*fd = req.fd;
++		else
++			close(req.fd);
++		if (offset != NULL)
++			*offset = req.offset;
++		ok = true;
++	}
++	close(dev);
++	return ok;
++}
++
+ RTE_EXPORT_INTERNAL_SYMBOL(mlx5_cvm_shared_lookup)
+ bool
+ mlx5_cvm_shared_lookup(const void *addr, int *fd, size_t *offset)
+ {
+-	if (!mlx5_cvm_shared_contains(addr))
+-		return false;
+-	if (fd != NULL)
+-		*fd = cvm.fd;
+-	if (offset != NULL)
+-		*offset = (uintptr_t)addr - (uintptr_t)cvm.base;
+-	return true;
++	if (mlx5_cvm_shared_contains(addr)) {
++		if (fd != NULL)
++			*fd = cvm.fd;
++		if (offset != NULL)
++			*offset = (uintptr_t)addr - (uintptr_t)cvm.base;
++		return true;
++	}
++	/* 不在驱动自己的区里，问内核 */
++	return cvm_kernel_lookup(addr, fd, offset);
+ }
+ 
+ RTE_EXPORT_INTERNAL_SYMBOL(mlx5_cvm_shared_dma_map)
+diff --git a/drivers/net/mlx5/hws/mlx5dr_send.c b/drivers/net/mlx5/hws/mlx5dr_send.c
+index d9787bb..8009fb1 100644
+--- a/drivers/net/mlx5/hws/mlx5dr_send.c
++++ b/drivers/net/mlx5/hws/mlx5dr_send.c
+@@ -821,8 +821,9 @@ static void mlx5dr_send_ring_close_sq(struct mlx5dr_send_ring_sq *sq)
+ 	mlx5_os_umem_dereg(sq->db_umem);
+ 	mlx5_os_umem_dereg(sq->buf_umem);
+ 	simple_free(sq->wr_priv);
+-	free(sq->db);
+-	free(sq->buf);
++	/* 与 mlx5_malloc_dma 配对：共享区地址不能交给普通 free() */
++	mlx5_free(sq->db);
++	mlx5_free(sq->buf);
+ }
+ 
+ static int mlx5dr_send_ring_open_cq(struct mlx5dr_context *ctx,
+diff --git a/drivers/net/mlx5/mlx5_rx.c b/drivers/net/mlx5/mlx5_rx.c
+index eead1fd..1a7387e 100644
+--- a/drivers/net/mlx5/mlx5_rx.c
++++ b/drivers/net/mlx5/mlx5_rx.c
+@@ -832,9 +832,25 @@ mlx5_rx_poll_len(struct mlx5_rxq_data *rxq, volatile struct mlx5_cqe *cqe,
+ 						[cq_ci & cqe_mask].pkt_info);
+ 
+ 				/* Fix endianness. */
+-				zip->cqe_cnt = rxq->cqe_comp_layout ?
+-					(MLX5_CQE_NUM_MINIS(op_own) + 1U) :
+-					rte_be_to_cpu_32(cqe->byte_cnt);
++				/*
++				 * 压缩 CQE 里 byte_cnt 表示 mini-CQE 个数，
++				 * 它会被用来推进 cq_ci。该值来自共享页，
++				 * 宿主机可写，未经校验时可把 cq_ci 推到任意
++				 * 位置 —— 越界后果是内存破坏而非坏包。
++				 * 这里单次读入局部变量后立即校验。
++				 */
++				{
++					uint32_t cnt = rxq->cqe_comp_layout ?
++						(MLX5_CQE_NUM_MINIS(op_own) + 1U) :
++						rte_be_to_cpu_32(cqe->byte_cnt);
++
++					if (unlikely(!mlx5_rx_cqe_cnt_valid(cnt, 1u << rxq->cqe_n))) {
++						rte_atomic_fetch_add_explicit(&rxq->stats.idropped,
++							1, rte_memory_order_relaxed);
++						return 0;
++					}
++					zip->cqe_cnt = cnt;
++				}
+ 				/*
+ 				 * Current mini array position is the one
+ 				 * returned by check_cqe64().
+@@ -847,7 +863,14 @@ mlx5_rx_poll_len(struct mlx5_rxq_data *rxq, volatile struct mlx5_cqe *cqe,
+ 				zip->ca = cq_ci;
+ 				zip->na = zip->ca + 7;
+ 				if (widx != NULL) {
+-					zip->wqe_idx = rte_be_to_cpu_16(cqe->wqe_counter);
++					/*
++					 * wqe_counter 被用作 WQE 环索引，
++					 * 同样来自共享页。按环大小取模，
++					 * 使越界值不会转化为越界访问。
++					 */
++					uint16_t wc = rte_be_to_cpu_16(cqe->wqe_counter);
++
++					zip->wqe_idx = wc & ((1u << rxq->elts_n) - 1);
+ 					*widx = zip->wqe_idx;
+ 				}
+ 				/* Compute the next non compressed CQE. */
+@@ -874,8 +897,12 @@ mlx5_rx_poll_len(struct mlx5_rxq_data *rxq, volatile struct mlx5_cqe *cqe,
+ 			} else {
+ 				++rxq->cq_ci;
+ 				len = rte_be_to_cpu_32(cqe->byte_cnt);
+-				if (widx != NULL)
+-					*widx = rte_be_to_cpu_16(cqe->wqe_counter);
++				if (widx != NULL) {
++					/* 同上：按环大小取模后再用作索引 */
++					uint16_t wc = rte_be_to_cpu_16(cqe->wqe_counter);
++
++					*widx = wc & ((1u << rxq->elts_n) - 1);
++				}
+ 				if (rxq->cqe_comp_layout) {
+ 					volatile struct mlx5_cqe *next;
+ 
+diff --git a/drivers/net/mlx5/mlx5_rx.h b/drivers/net/mlx5/mlx5_rx.h
+index 865c750..0ce2dc7 100644
+--- a/drivers/net/mlx5/mlx5_rx.h
++++ b/drivers/net/mlx5/mlx5_rx.h
+@@ -68,6 +68,42 @@ struct rxq_zip {
+ 	uint16_t wqe_idx; /* WQE index */
+ };
+ 
++
++/*
++ * 以下取值来自 CQ 缓冲区。在机密虚拟机里该缓冲区位于共享页，
++ * 宿主机可写，因此这些值必须视为不可信输入：先读入局部变量
++ * （volatile 保证单次读取），再校验，最后才使用。
++ *
++ * 被当作索引或长度使用而未经校验的值，越界后果是内存破坏，
++ * 不是收到坏包。
++ */
++
++/**
++ * 校验压缩 CQE 声明的 mini-CQE 个数。
++ *
++ * 该值用于推进 cq_ci（zip->cq_ci = rxq->cq_ci + cqe_cnt），
++ * 未经校验时可被推到任意位置。合法上限是整个 CQ 的元素数。
++ *
++ * @return 通过校验返回 true。
++ */
++static __rte_always_inline bool
++mlx5_rx_cqe_cnt_valid(uint32_t cqe_cnt, uint32_t cq_entries)
++{
++	return cqe_cnt != 0 && cqe_cnt <= cq_entries;
++}
++
++/**
++ * 校验包长。
++ *
++ * 上限取 CQ 声明所能承载的最大值；调用方仍需按自身缓冲区大小
++ * 再做一次约束。
++ */
++static __rte_always_inline bool
++mlx5_rx_len_valid(uint32_t len)
++{
++	return len <= UINT16_MAX;
++}
++
+ /* Get pointer to the first stride. */
+ #define mlx5_mprq_buf_addr(ptr, strd_n) (RTE_PTR_ADD((ptr), \
+ 				sizeof(struct mlx5_mprq_buf) + \
+diff --git a/drivers/net/mlx5/mlx5_tx.c b/drivers/net/mlx5/mlx5_tx.c
+index fe9da7f..a562c27 100644
+--- a/drivers/net/mlx5/mlx5_tx.c
++++ b/drivers/net/mlx5/mlx5_tx.c
+@@ -156,7 +156,13 @@ mlx5_tx_comp_flush(struct mlx5_txq_data *__rte_restrict txq,
+ 	if (likely(last_cqe != NULL)) {
+ 		uint16_t tail;
+ 
+-		txq->wqe_pi = rte_be_to_cpu_16(last_cqe->wqe_counter);
++		/*
++		 * wqe_counter 来自共享页（宿主机可写），被用作 WQE 环
++		 * 的生产者索引。按环掩码取模，使异常值不会转化为
++		 * 越界访问。
++		 */
++		txq->wqe_pi = rte_be_to_cpu_16(last_cqe->wqe_counter) &
++			      txq->wqe_m;
+ 		tail = txq->fcqs[(txq->cq_ci - 1) & txq->cqe_m];
+ 		if (likely(tail != txq->elts_tail)) {
+ 			mlx5_tx_free_elts(txq, tail, olx);
+-- 
+2.53.0
+

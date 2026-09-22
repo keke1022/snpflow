@@ -1,0 +1,1211 @@
+From 79cab7bbf71dd17f3f53b3c0d6e7cdf8d4d4cc42 Mon Sep 17 00:00:00 2001
+From: keke1022 <keke83space@gmail.com>
+Date: Tue, 22 Sep 2026 06:54:50 +0000
+Subject: [PATCH 3/5] =?UTF-8?q?common/mlx5,net/mlx5:=20DMA=20=E5=86=85?=
+ =?UTF-8?q?=E5=AD=98=E5=85=A8=E9=9D=A2=E6=94=B9=E9=81=93=E5=85=B1=E4=BA=AB?=
+ =?UTF-8?q?=E5=8C=BA=20+=20HWS=20=E8=B5=B0=20DevX?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- mlx5_malloc_dma(): DMA 专用分配入口, CVM 下走共享区, 否则原路
+- mlx5_free(): 先判共享区。extmem_register 后 mlx5_mem_is_rte() 会把
+  共享区认成 RTE 内存并 rte_free(), 退出路径必崩
+- 共享区 rte_extmem_register(iova=va) + rte_dev_dma_map 预填 MR
+- mlx5_os_umem_reg(): 共享区地址改走 devx_umem_reg_ex(fd,偏移),
+  DevX 命令的 umem_offset 保持 0, 命令结构不变
+- 清单各点改道: DevX CQ/SQ/QP/RQ x4, ASO, HWS 计数器, MTR 读缓冲,
+  连续 Tx 内存, hairpin TX
+- dv_flow_en=2 时跳过 rdma-core DR 初始化: strace 证实 dr_create_domain
+  的真实错误是 EIO(私有内存注册失败), ENODEV 是清理路径覆盖的
+- HWS 发送环 CQ 由 ibv_create_cq 改为 mlx5_devx_cq_create
+- HWS 发送环 buf/db 改道并走 mlx5_os_umem_reg 注册(原先直调 glue,
+  按 VA 注册 VM_PFNMAP 内存返回 EFAULT)
+
+现状: 设备探测与 Tx 队列全部通过, 剩 mempool 仍来自普通大页。
+---
+ drivers/common/mlx5/linux/mlx5_common_os.h    |  25 ++
+ drivers/common/mlx5/linux/mlx5_common_verbs.c |   6 +-
+ drivers/common/mlx5/linux/mlx5_cvm_shared.c   | 366 +++++++++++++-----
+ drivers/common/mlx5/linux/mlx5_cvm_shared.h   |  79 ----
+ drivers/common/mlx5/mlx5_common.c             |  11 +
+ drivers/common/mlx5/mlx5_common_devx.c        |   8 +-
+ drivers/common/mlx5/mlx5_cvm_shared.h         | 110 ++++++
+ drivers/common/mlx5/mlx5_malloc.c             |  42 ++
+ drivers/common/mlx5/mlx5_malloc.h             |   8 +
+ drivers/net/mlx5/hws/mlx5dr_send.c            |  96 +++--
+ drivers/net/mlx5/hws/mlx5dr_send.h            |   4 +-
+ drivers/net/mlx5/linux/mlx5_os.c              |  20 +
+ drivers/net/mlx5/mlx5_devx.c                  |   2 +-
+ drivers/net/mlx5/mlx5_flow_aso.c              |   2 +-
+ drivers/net/mlx5/mlx5_flow_quota.c            |   2 +-
+ drivers/net/mlx5/mlx5_hws_cnt.c               |   2 +-
+ drivers/net/mlx5/mlx5_trigger.c               |   5 +-
+ 17 files changed, 551 insertions(+), 237 deletions(-)
+ delete mode 100644 drivers/common/mlx5/linux/mlx5_cvm_shared.h
+ create mode 100644 drivers/common/mlx5/mlx5_cvm_shared.h
+
+diff --git a/drivers/common/mlx5/linux/mlx5_common_os.h b/drivers/common/mlx5/linux/mlx5_common_os.h
+index 7d4e3c5..df5c06f 100644
+--- a/drivers/common/mlx5/linux/mlx5_common_os.h
++++ b/drivers/common/mlx5/linux/mlx5_common_os.h
+@@ -19,6 +19,7 @@
+ #include <rte_interrupts.h>
+ 
+ #include "mlx5_autoconf.h"
++#include "mlx5_cvm_shared.h"
+ #include "mlx5_glue.h"
+ #include "mlx5_malloc.h"
+ 
+@@ -216,6 +217,30 @@ __rte_internal
+ static inline void *
+ mlx5_os_umem_reg(void *ctx, void *addr, size_t size, uint32_t access)
+ {
++	int fd;
++	size_t offset;
++
++	/*
++	 * 共享区内存只能以 dma-buf 注册：它由 remap_pfn_range 映射，
++	 * vma 带 VM_PFNMAP，get_user_pages 无法 pin，按虚拟地址注册
++	 * 必然失败。
++	 *
++	 * 每次分配单独注册一个 umem，其起点即本次分配的地址，因此
++	 * DevX 创建命令里的 umem_offset 仍然保持 0，命令结构不变。
++	 */
++	if (mlx5_cvm_shared_lookup(addr, &fd, &offset)) {
++		struct mlx5dv_devx_umem_in umem_in;
++
++		memset(&umem_in, 0, sizeof(umem_in));
++		umem_in.addr = (void *)(uintptr_t)offset;
++		umem_in.size = size;
++		umem_in.access = access;
++		/* pgsz_bitmap 为 0 会得到 EINVAL，易误判成不支持 dma-buf */
++		umem_in.pgsz_bitmap = ~0ULL;
++		umem_in.comp_mask = MLX5DV_UMEM_MASK_DMABUF;
++		umem_in.dmabuf_fd = fd;
++		return mlx5_glue->devx_umem_reg_ex(ctx, &umem_in);
++	}
+ 	return mlx5_glue->devx_umem_reg(ctx, addr, size, access);
+ }
+ 
+diff --git a/drivers/common/mlx5/linux/mlx5_common_verbs.c b/drivers/common/mlx5/linux/mlx5_common_verbs.c
+index f16592a..f9e5b61 100644
+--- a/drivers/common/mlx5/linux/mlx5_common_verbs.c
++++ b/drivers/common/mlx5/linux/mlx5_common_verbs.c
+@@ -22,7 +22,7 @@
+ #include <mlx5_common.h>
+ #include <mlx5_common_mr.h>
+ #include <mlx5_devx_cmds.h>
+-#include "mlx5_cvm_shared.h"
++#include <mlx5_cvm_shared.h>
+ 
+ /**
+  * Verbs callback to allocate a memory. This function should allocate the space
+@@ -203,7 +203,7 @@ mlx5_common_devx_reg_mr_dmabuf(void *pd, void *addr, size_t length,
+ 	pdn = dv_pd.pdn;
+ 	devx_ctx = ibv_pd->context;
+ 
+-	if (!mlx5_cvm_shared_lookup(addr, &fd, &offset, NULL, NULL)) {
++	if (!mlx5_cvm_shared_lookup(addr, &fd, &offset)) {
+ 		DRV_LOG(ERR,
+ 			"地址 %p 不在任何 cvm_shared 区域内，无法以 dma-buf 注册",
+ 			addr);
+@@ -294,7 +294,7 @@ mlx5_os_set_reg_mr_cb(mlx5_reg_mr_t *reg_mr_cb, mlx5_dereg_mr_t *dereg_mr_cb)
+ 	 * 机密虚拟机里 ibv_reg_mr 对任何普通内存都返回 EIO，唯一可行的
+ 	 * 注册路径是 dma-buf + DevX mkey。cvm_shared 可用即切换过去。
+ 	 */
+-	if (mlx5_cvm_shared_available()) {
++	if (mlx5_cvm_shared_enabled()) {
+ 		DRV_LOG(INFO,
+ 			"检测到 cvm_shared，MR 注册改用 dma-buf + DevX mkey 路径");
+ 		*reg_mr_cb = mlx5_common_devx_reg_mr_dmabuf;
+diff --git a/drivers/common/mlx5/linux/mlx5_cvm_shared.c b/drivers/common/mlx5/linux/mlx5_cvm_shared.c
+index 2a435ec..fcc38f2 100644
+--- a/drivers/common/mlx5/linux/mlx5_cvm_shared.c
++++ b/drivers/common/mlx5/linux/mlx5_cvm_shared.c
+@@ -12,16 +12,19 @@
+ 
+ #include <eal_export.h>
+ #include <rte_common.h>
+-#include <rte_log.h>
++#include <rte_dev.h>
++#include <rte_eal_paging.h>
++#include <rte_errno.h>
+ #include <rte_malloc.h>
++#include <rte_memory.h>
+ #include <rte_rwlock.h>
+ 
+ #include "mlx5_common_log.h"
+ #include "mlx5_cvm_shared.h"
+ 
+ /*
+- * 与内核模块 cvm_shared 的接口。此处内联定义而不引用内核头文件，
+- * 避免给 DPDK 构建引入外部依赖；两边必须保持一致。
++ * 与 cvm_shared 内核模块的接口。此处内联定义，避免给 DPDK 构建
++ * 引入外部头文件依赖；两侧必须保持一致。
+  */
+ #define CVM_SHARED_DEV "/dev/cvm_shared"
+ 
+@@ -35,60 +38,48 @@ struct cvm_shared_alloc_req {
+ #define CVM_SHARED_IOC_ALLOC \
+ 	_IOWR(CVM_SHARED_IOC_MAGIC, 0x01, struct cvm_shared_alloc_req)
+ 
+-/** 一块已映射的共享区域。 */
+-struct mlx5_cvm_region {
+-	void *va;                     /* mmap 起始地址 */
+-	size_t len;                   /* 长度 */
+-	int fd;                       /* dma-buf fd，注册时要用 */
+-	struct mlx5_cvm_region *next;
+-};
++/** 默认共享区大小。队列、驱动杂项内存与 mbuf 数据区都从这里出。 */
++#define CVM_DEFAULT_REGION_SIZE (512ull << 20)
+ 
+-static struct mlx5_cvm_region *cvm_regions;
+-static rte_rwlock_t cvm_lock = RTE_RWLOCK_INITIALIZER;
++/** 子分配的最小粒度与记账块。 */
++struct cvm_chunk {
++	void *addr;
++	size_t size;
++	bool used;
++	struct cvm_chunk *next;
++};
+ 
+-RTE_EXPORT_INTERNAL_SYMBOL(mlx5_cvm_shared_available)
+-bool
+-mlx5_cvm_shared_available(void)
+-{
+-	static int cached = -1;
++static struct {
++	bool inited;
++	bool enabled;          /* CVM 严格模式 */
++	void *base;
++	size_t len;
+ 	int fd;
++	struct cvm_chunk *chunks;
++	rte_rwlock_t lock;
++} cvm = { .fd = -1, .lock = RTE_RWLOCK_INITIALIZER };
+ 
+-	if (cached >= 0)
+-		return cached != 0;
++/* ------------------------------------------------------------------ */
+ 
+-	fd = open(CVM_SHARED_DEV, O_RDWR);
+-	if (fd < 0) {
+-		DRV_LOG(DEBUG, "cvm_shared 不可用: %s (%s)",
+-			CVM_SHARED_DEV, strerror(errno));
+-		cached = 0;
+-	} else {
+-		close(fd);
+-		cached = 1;
+-	}
+-	return cached != 0;
+-}
+-
+-RTE_EXPORT_INTERNAL_SYMBOL(mlx5_cvm_shared_alloc)
+-int
+-mlx5_cvm_shared_alloc(size_t size, void **va_out)
++static int
++cvm_region_create(size_t size)
+ {
+ 	struct cvm_shared_alloc_req req = { .size = size, .flags = 0, .fd = -1 };
+-	struct mlx5_cvm_region *reg;
++	size_t page_sz = rte_mem_page_size();
++	rte_iova_t *iovas = NULL;
++	struct cvm_chunk *first;
++	unsigned int n_pages;
+ 	void *va;
+-	int dev, ret = 0;
+-
+-	*va_out = NULL;
++	int dev, ret;
+ 
+ 	dev = open(CVM_SHARED_DEV, O_RDWR);
+-	if (dev < 0) {
+-		DRV_LOG(ERR, "打开 %s 失败: %s", CVM_SHARED_DEV, strerror(errno));
++	if (dev < 0)
+ 		return -errno;
+-	}
+ 	if (ioctl(dev, CVM_SHARED_IOC_ALLOC, &req) < 0) {
+ 		ret = -errno;
+-		DRV_LOG(ERR, "cvm_shared 分配 %zu 字节失败: %s",
+-			size, strerror(errno));
+ 		close(dev);
++		DRV_LOG(ERR, "cvm_shared 分配 %zu 字节失败: %s",
++			size, strerror(-ret));
+ 		return ret;
+ 	}
+ 	close(dev);
+@@ -96,93 +87,264 @@ mlx5_cvm_shared_alloc(size_t size, void **va_out)
+ 	va = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, req.fd, 0);
+ 	if (va == MAP_FAILED) {
+ 		ret = -errno;
+-		DRV_LOG(ERR, "映射共享区失败: %s", strerror(errno));
+ 		close(req.fd);
++		DRV_LOG(ERR, "映射共享区失败: %s", strerror(-ret));
+ 		return ret;
+ 	}
+ 
+-	reg = rte_zmalloc("mlx5_cvm_region", sizeof(*reg), 0);
+-	if (reg == NULL) {
++	/*
++	 * 必须把共享区登记进 DPDK 的内存表，否则 mlx5_mr_create() 里的
++	 * rte_mem_virt2memseg_list() 查不到这块内存。
++	 *
++	 * iova_addrs 不能传 NULL —— 那会把 IOVA 置成 RTE_BAD_IOVA。
++	 * 这里显式填 IOVA == VA，与 mkey 用虚拟地址作 start_addr 的
++	 * 选择一致，也要求 EAL 以 --iova-mode=va 运行。
++	 */
++	n_pages = size / page_sz;
++	iovas = malloc(sizeof(*iovas) * n_pages);
++	if (iovas == NULL) {
+ 		munmap(va, size);
+ 		close(req.fd);
+ 		return -ENOMEM;
+ 	}
+-	reg->va = va;
+-	reg->len = size;
+-	reg->fd = req.fd;
++	for (unsigned int i = 0; i < n_pages; i++)
++		iovas[i] = (rte_iova_t)(uintptr_t)va + (rte_iova_t)i * page_sz;
++
++	ret = rte_extmem_register(va, size, iovas, n_pages, page_sz);
++	free(iovas);
++	if (ret != 0) {
++		DRV_LOG(ERR, "rte_extmem_register 失败: %s", rte_strerror(rte_errno));
++		munmap(va, size);
++		close(req.fd);
++		return -rte_errno;
++	}
+ 
+-	rte_rwlock_write_lock(&cvm_lock);
+-	reg->next = cvm_regions;
+-	cvm_regions = reg;
+-	rte_rwlock_write_unlock(&cvm_lock);
++	first = rte_zmalloc("cvm_chunk", sizeof(*first), 0);
++	if (first == NULL) {
++		rte_extmem_unregister(va, size);
++		munmap(va, size);
++		close(req.fd);
++		return -ENOMEM;
++	}
++	first->addr = va;
++	first->size = size;
++	first->used = false;
+ 
+-	DRV_LOG(INFO, "共享区已就绪: va=%p len=%zu fd=%d", va, size, req.fd);
+-	*va_out = va;
++	cvm.base = va;
++	cvm.len = size;
++	cvm.fd = req.fd;
++	cvm.chunks = first;
++	DRV_LOG(INFO, "共享区就绪: va=%p len=%zu fd=%d（已 extmem_register，IOVA=VA）",
++		va, size, req.fd);
+ 	return 0;
+ }
+ 
+-RTE_EXPORT_INTERNAL_SYMBOL(mlx5_cvm_shared_free)
+-void
+-mlx5_cvm_shared_free(void *va)
++RTE_EXPORT_INTERNAL_SYMBOL(mlx5_cvm_shared_init)
++int
++mlx5_cvm_shared_init(size_t size)
+ {
+-	struct mlx5_cvm_region *reg, **pp;
++	int fd, ret;
+ 
+-	rte_rwlock_write_lock(&cvm_lock);
+-	for (pp = &cvm_regions; (reg = *pp) != NULL; pp = &reg->next) {
+-		if (reg->va == va) {
+-			*pp = reg->next;
+-			break;
+-		}
+-	}
+-	rte_rwlock_write_unlock(&cvm_lock);
+-
+-	if (reg == NULL) {
+-		DRV_LOG(ERR, "释放未知的共享区 %p", va);
+-		return;
+-	}
++	if (cvm.inited)
++		return 0;
++	cvm.inited = true;
+ 
+ 	/*
+-	 * 顺序无关紧要：dma-buf 的引用计数要等 munmap 之后才归零，
+-	 * 内核模块此时才把页转回私有。close(fd) 不会提前触发。
++	 * 模式在此处确定一次，之后不再改变。
+ 	 */
+-	munmap(reg->va, reg->len);
+-	close(reg->fd);
+-	rte_free(reg);
++	fd = open(CVM_SHARED_DEV, O_RDWR);
++	if (fd < 0) {
++		DRV_LOG(DEBUG, "未检测到 %s，按非 CVM 环境运行", CVM_SHARED_DEV);
++		cvm.enabled = false;
++		return 0;
++	}
++	close(fd);
++
++	ret = cvm_region_create(size ? size : CVM_DEFAULT_REGION_SIZE);
++	if (ret != 0) {
++		/*
++		 * 检测到 cvm_shared 却建不起共享区，是致命错误：
++		 * 继续用普通内存必然在注册阶段失败，不如就地报错。
++		 */
++		DRV_LOG(ERR, "检测到 cvm_shared 但共享区创建失败，无法继续");
++		return ret;
++	}
++	cvm.enabled = true;
++	DRV_LOG(INFO, "进入 CVM 严格模式：所有 DMA 内存只从共享区分配");
++	return 0;
+ }
+ 
+-RTE_EXPORT_INTERNAL_SYMBOL(mlx5_cvm_shared_lookup)
++RTE_EXPORT_INTERNAL_SYMBOL(mlx5_cvm_shared_enabled)
+ bool
+-mlx5_cvm_shared_lookup(const void *addr, int *fd, size_t *offset,
+-		       void **base, size_t *len)
++mlx5_cvm_shared_enabled(void)
+ {
+-	const uintptr_t a = (uintptr_t)addr;
+-	struct mlx5_cvm_region *reg;
+-	bool found = false;
+-
+-	rte_rwlock_read_lock(&cvm_lock);
+-	for (reg = cvm_regions; reg != NULL; reg = reg->next) {
+-		uintptr_t start = (uintptr_t)reg->va;
+-
+-		if (a >= start && a < start + reg->len) {
+-			if (fd != NULL)
+-				*fd = reg->fd;
+-			if (offset != NULL)
+-				*offset = a - start;
+-			if (base != NULL)
+-				*base = reg->va;
+-			if (len != NULL)
+-				*len = reg->len;
+-			found = true;
+-			break;
++	return cvm.enabled;
++}
++
++/* ------------------------------------------------------------------ */
++/* 带对齐的子分配器                                                    */
++/* ------------------------------------------------------------------ */
++
++RTE_EXPORT_INTERNAL_SYMBOL(mlx5_cvm_shared_alloc)
++void *
++mlx5_cvm_shared_alloc(size_t size, size_t align)
++{
++	struct cvm_chunk *c;
++	void *result = NULL;
++
++	if (!cvm.enabled || size == 0)
++		return NULL;
++	if (align == 0)
++		align = RTE_CACHE_LINE_SIZE;
++
++	rte_rwlock_write_lock(&cvm.lock);
++	for (c = cvm.chunks; c != NULL; c = c->next) {
++		uintptr_t start, aligned;
++		size_t lead, need;
++
++		if (c->used)
++			continue;
++		start = (uintptr_t)c->addr;
++		aligned = RTE_ALIGN_CEIL(start, align);
++		lead = aligned - start;
++		need = lead + size;
++		if (c->size < need)
++			continue;
++
++		/* 对齐产生的前段留作空闲块 */
++		if (lead != 0) {
++			struct cvm_chunk *head = rte_zmalloc("cvm_chunk",
++							     sizeof(*head), 0);
++			if (head == NULL)
++				break;
++			head->addr = c->addr;
++			head->size = lead;
++			head->used = false;
++			head->next = c;
++			/* 把 head 插到 c 之前 */
++			if (cvm.chunks == c) {
++				cvm.chunks = head;
++			} else {
++				struct cvm_chunk *p = cvm.chunks;
++				while (p->next != c)
++					p = p->next;
++				p->next = head;
++			}
++			c->addr = (void *)aligned;
++			c->size -= lead;
+ 		}
++
++		/* 尾部多余的切成新的空闲块 */
++		if (c->size > size) {
++			struct cvm_chunk *tail = rte_zmalloc("cvm_chunk",
++							     sizeof(*tail), 0);
++			if (tail == NULL)
++				break;
++			tail->addr = (void *)((uintptr_t)c->addr + size);
++			tail->size = c->size - size;
++			tail->used = false;
++			tail->next = c->next;
++			c->next = tail;
++			c->size = size;
++		}
++
++		c->used = true;
++		result = c->addr;
++		break;
+ 	}
+-	rte_rwlock_read_unlock(&cvm_lock);
+-	return found;
++	rte_rwlock_write_unlock(&cvm.lock);
++
++	if (result == NULL) {
++		/*
++		 * 严格模式下不回退到普通内存：那只会把失败推迟到
++		 * 注册或数据面，变成更难排查的问题。
++		 */
++		DRV_LOG(ERR,
++			"共享区已用尽，无法分配 %zu 字节（对齐 %zu）。"
++			"请增大共享区大小。",
++			size, align);
++	}
++	return result;
++}
++
++RTE_EXPORT_INTERNAL_SYMBOL(mlx5_cvm_shared_free)
++void
++mlx5_cvm_shared_free(void *addr)
++{
++	struct cvm_chunk *c, *prev = NULL;
++
++	if (addr == NULL || !cvm.enabled)
++		return;
++
++	rte_rwlock_write_lock(&cvm.lock);
++	for (c = cvm.chunks; c != NULL; prev = c, c = c->next) {
++		if (c->addr != addr)
++			continue;
++		c->used = false;
++		/* 与后继空闲块合并 */
++		while (c->next != NULL && !c->next->used) {
++			struct cvm_chunk *n = c->next;
++
++			c->size += n->size;
++			c->next = n->next;
++			rte_free(n);
++		}
++		/* 与前驱空闲块合并 */
++		if (prev != NULL && !prev->used) {
++			prev->size += c->size;
++			prev->next = c->next;
++			rte_free(c);
++		}
++		break;
++	}
++	rte_rwlock_write_unlock(&cvm.lock);
+ }
+ 
+ RTE_EXPORT_INTERNAL_SYMBOL(mlx5_cvm_shared_contains)
+ bool
+ mlx5_cvm_shared_contains(const void *addr)
+ {
+-	return mlx5_cvm_shared_lookup(addr, NULL, NULL, NULL, NULL);
++	uintptr_t a = (uintptr_t)addr;
++	uintptr_t base = (uintptr_t)cvm.base;
++
++	if (!cvm.enabled || cvm.base == NULL)
++		return false;
++	return a >= base && a < base + cvm.len;
++}
++
++RTE_EXPORT_INTERNAL_SYMBOL(mlx5_cvm_shared_lookup)
++bool
++mlx5_cvm_shared_lookup(const void *addr, int *fd, size_t *offset)
++{
++	if (!mlx5_cvm_shared_contains(addr))
++		return false;
++	if (fd != NULL)
++		*fd = cvm.fd;
++	if (offset != NULL)
++		*offset = (uintptr_t)addr - (uintptr_t)cvm.base;
++	return true;
++}
++
++RTE_EXPORT_INTERNAL_SYMBOL(mlx5_cvm_shared_dma_map)
++int
++mlx5_cvm_shared_dma_map(struct rte_device *dev)
++{
++	int ret;
++
++	if (!cvm.enabled)
++		return 0;
++	/*
++	 * 预先建立 MR。数据面不能容忍 MR 缓存 miss —— miss 会退回现场
++	 * 注册，而共享区地址只有 dma-buf 一条路可走，那条退路是死的，
++	 * 且失败发生在收发包途中，表现为丢包或卡死。
++	 */
++	ret = rte_dev_dma_map(dev, cvm.base, (uint64_t)(uintptr_t)cvm.base,
++			      cvm.len);
++	if (ret != 0) {
++		DRV_LOG(ERR, "共享区 rte_dev_dma_map 失败: %s",
++			rte_strerror(rte_errno));
++		return ret;
++	}
++	DRV_LOG(INFO, "共享区 MR 已预填充（%zu 字节）", cvm.len);
++	return 0;
+ }
+diff --git a/drivers/common/mlx5/linux/mlx5_cvm_shared.h b/drivers/common/mlx5/linux/mlx5_cvm_shared.h
+deleted file mode 100644
+index ceb60c1..0000000
+--- a/drivers/common/mlx5/linux/mlx5_cvm_shared.h
++++ /dev/null
+@@ -1,79 +0,0 @@
+-/* SPDX-License-Identifier: BSD-3-Clause
+- * Copyright 2026
+- */
+-/*
+- * 机密虚拟机（SEV-SNP）下的共享 DMA 内存管理。
+- *
+- * 背景
+- * ----
+- * SNP guest 里 guest 内存默认是私有加密页，RMP 会拒绝设备对其 DMA。
+- * 实测：ibv_reg_mr 与 devx_umem_reg 对普通内存和大页一律返回 EIO；
+- * 内核网络能工作是因为 DMA API 会把数据 bounce 到 swiotlb 的共享池，
+- * 但 swiotlb 单次映射上限约 1MB，且 bounce 与 DPDK 的零拷贝相悖。
+- *
+- * 解法是引入第三类内存：已转共享（C-bit 清除、RMP 标记 shared）
+- * 但不归 swiotlb 管，由 cvm_shared 内核模块以 dma-buf 形式导出。
+- *
+- * 本模块负责在 DPDK 侧管理这些区域，并提供地址查找 —— 因为注册只能
+- * 走 (dmabuf fd, 偏移)，不能走虚拟地址：内核模块用 remap_pfn_range
+- * 建立用户映射，vma 带 VM_PFNMAP，get_user_pages 无法 pin，
+- * 所以 ibv_reg_mr 这条路是死的。
+- */
+-#ifndef RTE_PMD_MLX5_CVM_SHARED_H_
+-#define RTE_PMD_MLX5_CVM_SHARED_H_
+-
+-#include <stdbool.h>
+-#include <stddef.h>
+-#include <stdint.h>
+-
+-/** cvm_shared 是否可用（内核模块已加载且可打开）。 */
+-__rte_internal
+-bool mlx5_cvm_shared_available(void);
+-
+-/**
+- * 从内核模块申请一块共享内存并映射到本进程。
+- *
+- * @param size   请求字节数，向上对齐到页。
+- * @param[out] va 映射后的起始地址。
+- * @return 0 成功，负值为 -errno。
+- */
+-__rte_internal
+-int mlx5_cvm_shared_alloc(size_t size, void **va);
+-
+-/**
+- * 释放先前申请的区域。
+- *
+- * 注意生命周期：dma-buf 的引用计数在 munmap **之后**才归零，
+- * 内核模块此时才把页转回私有。close(fd) 本身不会提前转回。
+- */
+-__rte_internal
+-void mlx5_cvm_shared_free(void *va);
+-
+-/**
+- * 地址查找：给定区内任一地址，返回其所属区域的 dma-buf fd 与偏移。
+- *
+- * MR 注册路径需要它，因为 reg_mr 回调拿到的是虚拟地址，
+- * 而 devx_umem_reg_ex 需要 (fd, 偏移)。
+- *
+- * @param addr        区内任一地址。
+- * @param[out] fd     该区域的 dma-buf fd。
+- * @param[out] offset addr 相对区域起点的偏移。
+- * @param[out] base   区域起始地址，可为 NULL。
+- * @param[out] len    区域长度，可为 NULL。
+- * @return true 表示 addr 落在某个共享区内。
+- */
+-__rte_internal
+-bool mlx5_cvm_shared_lookup(const void *addr, int *fd, size_t *offset,
+-			    void **base, size_t *len);
+-
+-/**
+- * addr 是否落在任一共享区内。
+- *
+- * MR 缓存的 miss 路径用它做显式拒绝：对共享区地址回退到普通
+- * ibv_reg_mr 必然失败，而失败发生在数据面，表现为丢包或卡死，
+- * 不是启动期的明确报错。宁可在这里直接报错。
+- */
+-__rte_internal
+-bool mlx5_cvm_shared_contains(const void *addr);
+-
+-#endif /* RTE_PMD_MLX5_CVM_SHARED_H_ */
+diff --git a/drivers/common/mlx5/mlx5_common.c b/drivers/common/mlx5/mlx5_common.c
+index 84a93e7..43b59de 100644
+--- a/drivers/common/mlx5/mlx5_common.c
++++ b/drivers/common/mlx5/mlx5_common.c
+@@ -18,6 +18,7 @@
+ #include "mlx5_common_os.h"
+ #include "mlx5_common_mp.h"
+ #include "mlx5_common_log.h"
++#include "mlx5_cvm_shared.h"
+ #include "mlx5_common_defs.h"
+ #include "mlx5_common_private.h"
+ 
+@@ -1003,6 +1004,16 @@ mlx5_common_dev_probe(struct rte_device *eal_dev)
+ 	int ret;
+ 
+ 	DRV_LOG(INFO, "probe device \"%s\".", eal_dev->name);
++	/*
++	 * 运行模式在此处决定一次：检测到 cvm_shared 即进入 CVM 严格模式，
++	 * 此后 DMA 内存只从共享区分配；未检测到则完全按原路运行。
++	 * 失败是致命的 —— 继续用私有内存必然在注册阶段报 EIO。
++	 */
++	ret = mlx5_cvm_shared_init(0);
++	if (ret != 0) {
++		DRV_LOG(ERR, "共享 DMA 内存初始化失败，终止探测");
++		return ret;
++	}
+ 	if (eal_dev->devargs != NULL && eal_dev->devargs->args != NULL)
+ 		mkvlist_p = &mkvlist;
+ 	ret = mlx5_kvargs_prepare(mkvlist_p, eal_dev->devargs);
+diff --git a/drivers/common/mlx5/mlx5_common_devx.c b/drivers/common/mlx5/mlx5_common_devx.c
+index 18a5376..a45c52b 100644
+--- a/drivers/common/mlx5/mlx5_common_devx.c
++++ b/drivers/common/mlx5/mlx5_common_devx.c
+@@ -115,7 +115,7 @@ mlx5_devx_cq_create(void *ctx, struct mlx5_devx_cq *cq_obj, uint16_t log_desc_n,
+ 	if (!attr->q_len) {
+ 		umem_dbrec = RTE_ALIGN(umem_size, MLX5_DBR_SIZE);
+ 		umem_size += MLX5_DBR_SIZE;
+-		umem_buf = mlx5_malloc_numa_tolerant(MLX5_MEM_RTE | MLX5_MEM_ZERO, umem_size,
++		umem_buf = mlx5_malloc_dma(MLX5_MEM_RTE | MLX5_MEM_ZERO, umem_size,
+ 						     alignment, socket);
+ 		if (!umem_buf) {
+ 			DRV_LOG(ERR, "Failed to allocate memory for CQ.");
+@@ -267,7 +267,7 @@ mlx5_devx_sq_create(void *ctx, struct mlx5_devx_sq *sq_obj, uint16_t log_wqbb_n,
+ 	if (!attr->q_len) {
+ 		umem_dbrec = RTE_ALIGN(umem_size, MLX5_DBR_SIZE);
+ 		umem_size += MLX5_DBR_SIZE;
+-		umem_buf = mlx5_malloc(MLX5_MEM_RTE | MLX5_MEM_ZERO, umem_size,
++		umem_buf = mlx5_malloc_dma(MLX5_MEM_RTE | MLX5_MEM_ZERO, umem_size,
+ 				       alignment, socket);
+ 		if (!umem_buf) {
+ 			DRV_LOG(ERR, "Failed to allocate memory for SQ.");
+@@ -440,7 +440,7 @@ mlx5_devx_qp_create(void *ctx, struct mlx5_devx_qp *qp_obj, uint32_t queue_size,
+ 	umem_size = queue_size;
+ 	umem_dbrec = RTE_ALIGN(umem_size, MLX5_DBR_SIZE);
+ 	umem_size += MLX5_DBR_SIZE;
+-	umem_buf = mlx5_malloc(MLX5_MEM_RTE | MLX5_MEM_ZERO, umem_size,
++	umem_buf = mlx5_malloc_dma(MLX5_MEM_RTE | MLX5_MEM_ZERO, umem_size,
+ 			       alignment, socket);
+ 	if (!umem_buf) {
+ 		DRV_LOG(ERR, "Failed to allocate memory for QP.");
+@@ -547,7 +547,7 @@ mlx5_devx_wq_init(void *ctx, uint32_t wqe_size, uint16_t log_wqbb_n, int socket,
+ 	umem_size = wqe_size * (1 << log_wqbb_n);
+ 	umem_dbrec = RTE_ALIGN(umem_size, MLX5_DBR_SIZE);
+ 	umem_size += MLX5_DBR_SIZE;
+-	umem_buf = mlx5_malloc_numa_tolerant(MLX5_MEM_RTE | MLX5_MEM_ZERO, umem_size,
++	umem_buf = mlx5_malloc_dma(MLX5_MEM_RTE | MLX5_MEM_ZERO, umem_size,
+ 					     alignment, socket);
+ 	if (!umem_buf) {
+ 		DRV_LOG(ERR, "Failed to allocate memory for RQ.");
+diff --git a/drivers/common/mlx5/mlx5_cvm_shared.h b/drivers/common/mlx5/mlx5_cvm_shared.h
+new file mode 100644
+index 0000000..589fa9c
+--- /dev/null
++++ b/drivers/common/mlx5/mlx5_cvm_shared.h
+@@ -0,0 +1,110 @@
++/* SPDX-License-Identifier: BSD-3-Clause
++ * Copyright 2026
++ */
++/*
++ * 机密虚拟机（SEV-SNP）下的共享 DMA 内存。
++ *
++ * SNP guest 里 guest 内存默认是私有加密页，RMP 拒绝设备对其 DMA：
++ * ibv_reg_mr 与 devx_umem_reg 对普通内存和大页一律返回 EIO。
++ * 内核网络能工作是因为 DMA API 把数据 bounce 到 swiotlb 的共享池，
++ * 但那有单次约 1MB 的映射上限，且与零拷贝相悖。
++ *
++ * 解法是第三类内存：已转共享（C-bit 清除、RMP 标记 shared）但不归
++ * swiotlb 管，由 cvm_shared 内核模块以 dma-buf 导出。本模块在 DPDK
++ * 侧管理它，并提供 VA -> (dmabuf fd, 偏移) 查找 —— 注册只能走
++ * (fd, 偏移)，因为该内存以 remap_pfn_range 映射、vma 带 VM_PFNMAP，
++ * get_user_pages 无法 pin，ibv_reg_mr 这条路是死的。
++ */
++#ifndef RTE_PMD_MLX5_CVM_SHARED_H_
++#define RTE_PMD_MLX5_CVM_SHARED_H_
++
++#include <stdbool.h>
++#include <stddef.h>
++#include <stdint.h>
++
++#include <rte_compat.h>
++
++struct rte_device;
++
++#ifdef RTE_EXEC_ENV_LINUX
++
++/**
++ * 探测期调用一次，决定本进程的运行模式。
++ *
++ * 模式一经确定不再改变：cvm_shared 可用即进入 **CVM 严格模式**，
++ * 此后所有 DMA 内存只从共享区取，取不到直接报错；不可用则完全走原路。
++ * 刻意不做「按调用回退」—— 那会让一部分 DMA 内存落在私有页上，
++ * 失败推迟到数据面，表现为丢包或卡死而非启动期的明确错误。
++ *
++ * @param size 共享区大小，0 表示用默认值。
++ * @return 0 成功（含「非 CVM，走原路」），负值为致命错误。
++ */
++__rte_internal
++int mlx5_cvm_shared_init(size_t size);
++
++/** 是否处于 CVM 严格模式。 */
++__rte_internal
++bool mlx5_cvm_shared_enabled(void);
++
++/**
++ * 从共享区分配 DMA 内存。仅在 CVM 严格模式下有意义。
++ *
++ * @param size  字节数。
++ * @param align 对齐要求（DevX 队列通常要求页对齐，必须满足，
++ *              否则创建命令会失败）。
++ * @return 成功返回地址，失败返回 NULL（严格模式下不回退）。
++ */
++__rte_internal
++void *mlx5_cvm_shared_alloc(size_t size, size_t align);
++
++/** 释放共享区内存。addr 必须来自 mlx5_cvm_shared_alloc。 */
++__rte_internal
++void mlx5_cvm_shared_free(void *addr);
++
++/**
++ * addr 是否落在共享区内。
++ *
++ * mlx5_free() 必须先用它判断：共享区经 rte_extmem_register 登记后，
++ * mlx5_mem_is_rte() 会把它认成 RTE 内存并调用 rte_free()，
++ * 在退出或错误路径上直接崩溃。
++ */
++__rte_internal
++bool mlx5_cvm_shared_contains(const void *addr);
++
++/**
++ * 查找 addr 所属区域的 dma-buf fd 与区内偏移。
++ *
++ * MR 注册与 umem 注册都需要它：回调只拿得到虚拟地址，
++ * 而 devx_umem_reg_ex 需要 (fd, 偏移)。
++ */
++__rte_internal
++bool mlx5_cvm_shared_lookup(const void *addr, int *fd, size_t *offset);
++
++/**
++ * 对共享区做 rte_dev_dma_map，预先建立 MR。
++ *
++ * 在设备探测之后调用。数据面不能容忍 MR 缓存 miss —— 那会退回
++ * 现场注册，而对共享区地址只有 dma-buf 一条路，miss 路径必然失败。
++ */
++__rte_internal
++int mlx5_cvm_shared_dma_map(struct rte_device *dev);
++
++#else /* !RTE_EXEC_ENV_LINUX */
++
++static inline int mlx5_cvm_shared_init(size_t size)
++{ (void)size; return 0; }
++static inline bool mlx5_cvm_shared_enabled(void) { return false; }
++static inline void *mlx5_cvm_shared_alloc(size_t size, size_t align)
++{ (void)size; (void)align; return NULL; }
++static inline void mlx5_cvm_shared_free(void *addr) { (void)addr; }
++static inline bool mlx5_cvm_shared_contains(const void *addr)
++{ (void)addr; return false; }
++static inline bool mlx5_cvm_shared_lookup(const void *addr, int *fd,
++					  size_t *offset)
++{ (void)addr; (void)fd; (void)offset; return false; }
++static inline int mlx5_cvm_shared_dma_map(struct rte_device *dev)
++{ (void)dev; return 0; }
++
++#endif /* RTE_EXEC_ENV_LINUX */
++
++#endif /* RTE_PMD_MLX5_CVM_SHARED_H_ */
+diff --git a/drivers/common/mlx5/mlx5_malloc.c b/drivers/common/mlx5/mlx5_malloc.c
+index 28fb19b..fb11039 100644
+--- a/drivers/common/mlx5/mlx5_malloc.c
++++ b/drivers/common/mlx5/mlx5_malloc.c
+@@ -12,6 +12,7 @@
+ #include "mlx5_common_log.h"
+ #include "mlx5_common_os.h"
+ #include "mlx5_malloc.h"
++#include "mlx5_cvm_shared.h"
+ 
+ struct mlx5_sys_mem {
+ 	uint32_t init:1; /* Memory allocator initialized. */
+@@ -268,12 +269,53 @@ mlx5_realloc(void *addr, uint32_t flags, size_t size, unsigned int align,
+ 	return new_addr;
+ }
+ 
++/**
++ * 分配设备可直接 DMA 访问的内存。
++ *
++ * 机密虚拟机（SEV-SNP）里普通内存是私有加密页，设备无法访问，
++ * 注册阶段会返回 EIO。CVM 严格模式下本函数从共享区分配；
++ * 非 CVM 环境完全退回 mlx5_malloc，行为不变。
++ *
++ * 刻意不做「分配失败就退回普通内存」：那会让一部分 DMA 内存落在
++ * 私有页上，失败推迟到数据面，表现为丢包或卡死，而不是启动期的
++ * 明确错误。共享区用尽就是配置问题，应当就地暴露。
++ *
++ * 释放仍用 mlx5_free()，它会自行识别共享区地址。
++ *
++ * @param flags 同 mlx5_malloc，非 CVM 路径下透传。
++ * @param size  字节数。
++ * @param align 对齐要求；DevX 队列通常要求页对齐，必须满足。
++ * @param socket NUMA socket，非 CVM 路径下透传。
++ */
++RTE_EXPORT_INTERNAL_SYMBOL(mlx5_malloc_dma)
++void *
++mlx5_malloc_dma(uint32_t flags, size_t size, unsigned int align, int socket)
++{
++	if (mlx5_cvm_shared_enabled()) {
++		void *addr = mlx5_cvm_shared_alloc(size, align);
++
++		if (addr != NULL && (flags & MLX5_MEM_ZERO))
++			memset(addr, 0, size);
++		return addr;
++	}
++	return mlx5_malloc(flags, size, align, socket);
++}
++
+ RTE_EXPORT_INTERNAL_SYMBOL(mlx5_free)
+ void
+ mlx5_free(void *addr)
+ {
+ 	if (addr == NULL)
+ 		return;
++	/*
++	 * 必须先判断共享区。共享区经 rte_extmem_register 登记之后，
++	 * mlx5_mem_is_rte() 会把它认作 RTE 内存并调用 rte_free()，
++	 * 在退出或错误路径上直接崩溃。
++	 */
++	if (mlx5_cvm_shared_contains(addr)) {
++		mlx5_cvm_shared_free(addr);
++		return;
++	}
+ 	if (!mlx5_mem_is_rte(addr)) {
+ #ifdef RTE_LIBRTE_MLX5_DEBUG
+ 		rte_atomic_fetch_add_explicit(&mlx5_sys_mem.free_sys, 1,
+diff --git a/drivers/common/mlx5/mlx5_malloc.h b/drivers/common/mlx5/mlx5_malloc.h
+index 46ea5bc..37795e0 100644
+--- a/drivers/common/mlx5/mlx5_malloc.h
++++ b/drivers/common/mlx5/mlx5_malloc.h
+@@ -69,6 +69,14 @@ void mlx5_memory_stat_dump(void);
+ __rte_internal
+ void *mlx5_malloc(uint32_t flags, size_t size, unsigned int align, int socket);
+ 
++/**
++ * 分配设备可 DMA 访问的内存（机密虚拟机下来自共享区）。
++ * 释放用 mlx5_free()。
++ */
++__rte_internal
++void *mlx5_malloc_dma(uint32_t flags, size_t size, unsigned int align,
++		      int socket);
++
+ /**
+  * Memory reallocate function.
+  *
+diff --git a/drivers/net/mlx5/hws/mlx5dr_send.c b/drivers/net/mlx5/hws/mlx5dr_send.c
+index 85f613e..d9787bb 100644
+--- a/drivers/net/mlx5/hws/mlx5dr_send.c
++++ b/drivers/net/mlx5/hws/mlx5dr_send.c
+@@ -3,6 +3,8 @@
+  */
+ 
+ #include "mlx5dr_internal.h"
++#include <mlx5_common_devx.h>
++#include <mlx5_malloc.h>
+ 
+ struct mlx5dr_send_ring_dep_wqe *
+ mlx5dr_send_add_new_dep_wqe(struct mlx5dr_send_engine *queue)
+@@ -740,25 +742,36 @@ static int mlx5dr_send_ring_open_sq(struct mlx5dr_context *ctx,
+ 
+ 	page_size = sysconf(_SC_PAGESIZE);
+ 	buf_aligned = align(sq_buf_sz, page_size);
+-	err = posix_memalign((void **)&sq->buf, page_size, buf_aligned);
+-	if (err) {
++	/*
++	 * 这两块内存都会被 devx_umem_reg 注册给设备。机密虚拟机里普通内存
++	 * 是私有加密页，注册返回 EIO，所以必须来自共享区。
++	 * mlx5_malloc_dma 在非 CVM 环境下等价于原先的对齐分配。
++	 */
++	sq->buf = mlx5_malloc_dma(MLX5_MEM_ZERO, buf_aligned, page_size,
++				  SOCKET_ID_ANY);
++	if (!sq->buf) {
+ 		rte_errno = ENOMEM;
+-		return err;
++		return ENOMEM;
+ 	}
+-	memset(sq->buf, 0, buf_aligned);
+ 
+-	err = posix_memalign((void **)&sq->db, 8, 8);
+-	if (err)
++	sq->db = mlx5_malloc_dma(MLX5_MEM_ZERO, 8, 8, SOCKET_ID_ANY);
++	if (!sq->db) {
++		err = ENOMEM;
+ 		goto free_buf;
++	}
+ 
+-	sq->buf_umem = mlx5_glue->devx_umem_reg(ctx->ibv_ctx, sq->buf, sq_buf_sz, 0);
++	/*
++	 * 必须走 mlx5_os_umem_reg：共享区内存带 VM_PFNMAP，按虚拟地址
++	 * 注册会返回 EFAULT，只能以 dma-buf (fd, 偏移) 注册。
++	 */
++	sq->buf_umem = mlx5_os_umem_reg(ctx->ibv_ctx, sq->buf, sq_buf_sz, 0);
+ 
+ 	if (!sq->buf_umem) {
+ 		err = errno;
+ 		goto free_db;
+ 	}
+ 
+-	sq->db_umem = mlx5_glue->devx_umem_reg(ctx->ibv_ctx, sq->db, 8, 0);
++	sq->db_umem = mlx5_os_umem_reg(ctx->ibv_ctx, sq->db, 8, 0);
+ 	if (!sq->db_umem) {
+ 		err = errno;
+ 		goto free_buf_umem;
+@@ -790,13 +803,13 @@ static int mlx5dr_send_ring_open_sq(struct mlx5dr_context *ctx,
+ destroy_sq_obj:
+ 	mlx5dr_cmd_destroy_obj(sq->obj);
+ free_db_umem:
+-	mlx5_glue->devx_umem_dereg(sq->db_umem);
++	mlx5_os_umem_dereg(sq->db_umem);
+ free_buf_umem:
+-	mlx5_glue->devx_umem_dereg(sq->buf_umem);
++	mlx5_os_umem_dereg(sq->buf_umem);
+ free_db:
+-	free(sq->db);
++	mlx5_free(sq->db);
+ free_buf:
+-	free(sq->buf);
++	mlx5_free(sq->buf);
+ 	rte_errno = err;
+ 	return err;
+ }
+@@ -805,8 +818,8 @@ static void mlx5dr_send_ring_close_sq(struct mlx5dr_send_ring_sq *sq)
+ {
+ 	simple_free(sq->dep_wqe);
+ 	mlx5dr_cmd_destroy_obj(sq->obj);
+-	mlx5_glue->devx_umem_dereg(sq->db_umem);
+-	mlx5_glue->devx_umem_dereg(sq->buf_umem);
++	mlx5_os_umem_dereg(sq->db_umem);
++	mlx5_os_umem_dereg(sq->buf_umem);
+ 	simple_free(sq->wr_priv);
+ 	free(sq->db);
+ 	free(sq->buf);
+@@ -816,49 +829,48 @@ static int mlx5dr_send_ring_open_cq(struct mlx5dr_context *ctx,
+ 				    struct mlx5dr_send_engine *queue,
+ 				    struct mlx5dr_send_ring_cq *cq)
+ {
+-	struct mlx5dv_cq mlx5_cq = {0};
+-	struct mlx5dv_obj obj;
+-	struct ibv_cq *ibv_cq;
+-	size_t cq_size;
++	struct mlx5_devx_cq_attr cq_attr = {0};
++	uint16_t log_cq_size;
+ 	int err;
+ 
+-	cq_size = queue->num_entries;
+-	ibv_cq = mlx5_glue->create_cq(ctx->ibv_ctx, cq_size, NULL, NULL, 0);
+-	if (!ibv_cq) {
+-		DR_LOG(ERR, "Failed to create CQ");
+-		rte_errno = errno;
+-		return rte_errno;
+-	}
++	/*
++	 * 用 DevX 而非 ibv_create_cq 建这个 CQ。
++	 *
++	 * rdma-core 的 ibv_create_cq 在用户态分配 CQ 缓冲区，再经内核
++	 * ib_umem_get pin 住注册。机密虚拟机里普通内存是私有加密页，
++	 * 注册返回 EIO；而共享区内存带 VM_PFNMAP，get_user_pages 同样
++	 * pin 不住 —— 两条路都不通，改 rdma-core 也解决不了。
++	 *
++	 * mlx5_devx_cq_create() 的缓冲区走 mlx5_malloc_dma()，
++	 * 机密虚拟机下自动来自共享区，普通环境行为不变。
++	 * HWS 本来就要求 DevX，因此这里无条件替换，不分情况。
++	 */
++	log_cq_size = log2above(queue->num_entries);
++	cq_attr.uar_page_id = mlx5_os_get_devx_uar_page_id(queue->uar);
+ 
+-	obj.cq.in = ibv_cq;
+-	obj.cq.out = &mlx5_cq;
+-	err = mlx5_glue->dv_init_obj(&obj, MLX5DV_OBJ_CQ);
++	err = mlx5_devx_cq_create(ctx->ibv_ctx, &cq->devx_cq, log_cq_size,
++				  &cq_attr, SOCKET_ID_ANY);
+ 	if (err) {
+-		err = errno;
+-		goto close_cq;
++		DR_LOG(ERR, "Failed to create DevX CQ");
++		rte_errno = errno ? errno : ENOMEM;
++		return rte_errno;
+ 	}
+ 
+-	cq->buf = mlx5_cq.buf;
+-	cq->db = mlx5_cq.dbrec;
+-	cq->ncqe = mlx5_cq.cqe_cnt;
+-	cq->cqe_sz = mlx5_cq.cqe_size;
++	cq->buf = (uint8_t *)(uintptr_t)cq->devx_cq.umem_buf;
++	cq->db = (__be32 *)(uintptr_t)cq->devx_cq.db_rec;
++	cq->ncqe = 1u << log_cq_size;
++	cq->cqe_sz = sizeof(struct mlx5_cqe);
+ 	cq->cqe_log_sz = log2above(cq->cqe_sz);
+ 	cq->ncqe_mask = cq->ncqe - 1;
+ 	cq->buf_sz = cq->cqe_sz * cq->ncqe;
+-	cq->cqn = mlx5_cq.cqn;
+-	cq->ibv_cq = ibv_cq;
++	cq->cqn = cq->devx_cq.cq->id;
+ 
+ 	return 0;
+-
+-close_cq:
+-	mlx5_glue->destroy_cq(ibv_cq);
+-	rte_errno = err;
+-	return err;
+ }
+ 
+ static void mlx5dr_send_ring_close_cq(struct mlx5dr_send_ring_cq *cq)
+ {
+-	mlx5_glue->destroy_cq(cq->ibv_cq);
++	mlx5_devx_cq_destroy(&cq->devx_cq);
+ }
+ 
+ static void mlx5dr_send_ring_close(struct mlx5dr_send_ring *ring)
+diff --git a/drivers/net/mlx5/hws/mlx5dr_send.h b/drivers/net/mlx5/hws/mlx5dr_send.h
+index 9209754..27b0ab4 100644
+--- a/drivers/net/mlx5/hws/mlx5dr_send.h
++++ b/drivers/net/mlx5/hws/mlx5dr_send.h
+@@ -3,6 +3,8 @@
+  */
+ 
+ #ifndef MLX5DR_SEND_H_
++
++#include <mlx5_common_devx.h>
+ #define MLX5DR_SEND_H_
+ 
+ #define MLX5DR_NUM_SEND_RINGS 1
+@@ -84,7 +86,7 @@ struct mlx5dr_send_ring_cq {
+ 	uint32_t cqe_log_sz;
+ 	__be32 *db;
+ 	uint16_t poll_wqe;
+-	struct ibv_cq *ibv_cq;
++	struct mlx5_devx_cq devx_cq; /* DevX CQ：verbs 路径在机密虚拟机下不可用 */
+ 	uint32_t cqn;
+ 	uint32_t cqe_sz;
+ };
+diff --git a/drivers/net/mlx5/linux/mlx5_os.c b/drivers/net/mlx5/linux/mlx5_os.c
+index be4ede0..86f32ff 100644
+--- a/drivers/net/mlx5/linux/mlx5_os.c
++++ b/drivers/net/mlx5/linux/mlx5_os.c
+@@ -569,6 +569,25 @@ mlx5_alloc_shared_dr(struct rte_eth_dev *eth_dev)
+ #ifdef HAVE_MLX5DV_DR
+ 	void *domain;
+ 
++	/*
++	 * rdma-core 的 DR 域只被 DV 流引擎使用：sh->rx_domain /
++	 * sh->tx_domain / sh->dr_drop_action 都只出现在 mlx5_flow_dv.c。
++	 * HWS 走 DPDK 自带的 mlx5dr，用 mlx5dr_context_open() 建自己的
++	 * 上下文，不需要这些对象。
++	 *
++	 * 在机密虚拟机里这一步是必须的：rdma-core 的 dr_send.c 用
++	 * posix_memalign + devx_umem_reg 建发送环，那块内存是私有加密页，
++	 * 注册返回 EIO（向上被清理路径改写成 ENODEV），整个设备探测失败。
++	 *
++	 * 注意 25.11 里原有的 "dv_flow_en == 2 -> return 0" 提前返回位于
++	 * #ifdef HAVE_IBV_FLOW_DV_SUPPORT 的 #else 分支，当该宏有定义时
++	 * 被编译掉，所以这里需要显式判断。
++	 */
++	if (priv->sh->config.dv_flow_en == 2) {
++		DRV_LOG(DEBUG, "dv_flow_en=2（HWS），跳过 rdma-core DR 初始化");
++		goto skip_dr_init;
++	}
++
+ 	/* Reference counter is zero, we should initialize structures. */
+ 	domain = mlx5_glue->dr_create_domain(sh->cdev->ctx,
+ 					     MLX5DV_DR_DOMAIN_TYPE_NIC_RX);
+@@ -671,6 +690,7 @@ mlx5_alloc_shared_dr(struct rte_eth_dev *eth_dev)
+ 	}
+ 
+ 	__mlx5_discovery_misc5_cap(priv);
++skip_dr_init:
+ #endif /* HAVE_MLX5DV_DR */
+ 	LIST_INIT(&sh->shared_rxqs);
+ 	return 0;
+diff --git a/drivers/net/mlx5/mlx5_devx.c b/drivers/net/mlx5/mlx5_devx.c
+index 523b53d..f10494b 100644
+--- a/drivers/net/mlx5/mlx5_devx.c
++++ b/drivers/net/mlx5/mlx5_devx.c
+@@ -1384,7 +1384,7 @@ mlx5_txq_obj_hairpin_new(struct rte_eth_dev *dev, uint16_t idx)
+ 			(size_t)RTE_BIT32(host_mem_attr.wq_attr.log_hairpin_num_packets);
+ 		umem_dbrec = RTE_ALIGN(umem_size, MLX5_DBR_SIZE);
+ 		umem_size += MLX5_DBR_SIZE;
+-		umem_buf = mlx5_malloc(MLX5_MEM_RTE | MLX5_MEM_ZERO, umem_size,
++		umem_buf = mlx5_malloc_dma(MLX5_MEM_RTE | MLX5_MEM_ZERO, umem_size,
+ 				       alignment, priv->sh->numa_node);
+ 		if (umem_buf == NULL && txq_ctrl->hairpin_conf.force_memory) {
+ 			DRV_LOG(ERR, "Failed to allocate memory for hairpin TX queue");
+diff --git a/drivers/net/mlx5/mlx5_flow_aso.c b/drivers/net/mlx5/mlx5_flow_aso.c
+index 5e2a81e..f53e23d 100644
+--- a/drivers/net/mlx5/mlx5_flow_aso.c
++++ b/drivers/net/mlx5/mlx5_flow_aso.c
+@@ -53,7 +53,7 @@ mlx5_aso_reg_mr(struct mlx5_common_device *cdev, size_t length,
+ {
+ 	int ret;
+ 
+-	mr->addr = mlx5_malloc(MLX5_MEM_RTE | MLX5_MEM_ZERO, length, 4096,
++	mr->addr = mlx5_malloc_dma(MLX5_MEM_RTE | MLX5_MEM_ZERO, length, 4096,
+ 			       SOCKET_ID_ANY);
+ 	if (!mr->addr) {
+ 		DRV_LOG(ERR, "Failed to create ASO bits mem for MR.");
+diff --git a/drivers/net/mlx5/mlx5_flow_quota.c b/drivers/net/mlx5/mlx5_flow_quota.c
+index d94167d..ec6b93f 100644
+--- a/drivers/net/mlx5/mlx5_flow_quota.c
++++ b/drivers/net/mlx5/mlx5_flow_quota.c
+@@ -440,7 +440,7 @@ mlx5_quota_alloc_read_buf(struct mlx5_priv *priv)
+ 		sq_size_sum += priv->hw_q[i].size;
+ 	/* ACCESS MTR ASO WQE reads 2 MTR objects */
+ 	rd_buf_size = 2 * sq_size_sum * sizeof(buf[0]);
+-	buf = mlx5_malloc(MLX5_MEM_ANY | MLX5_MEM_ZERO, rd_buf_size,
++	buf = mlx5_malloc_dma(MLX5_MEM_ANY | MLX5_MEM_ZERO, rd_buf_size,
+ 			  page_size, SOCKET_ID_ANY);
+ 	if (!buf) {
+ 		DRV_LOG(DEBUG, "QUOTA: failed to allocate MTR ASO READ buffer [1]");
+diff --git a/drivers/net/mlx5/mlx5_hws_cnt.c b/drivers/net/mlx5/mlx5_hws_cnt.c
+index 1b6acb7..4ad4023 100644
+--- a/drivers/net/mlx5/mlx5_hws_cnt.c
++++ b/drivers/net/mlx5/mlx5_hws_cnt.c
+@@ -288,7 +288,7 @@ mlx5_hws_cnt_raw_data_alloc(struct mlx5_dev_ctx_shared *sh, uint32_t n,
+ 				   NULL, "failed to allocate counters memory manager");
+ 		goto error;
+ 	}
+-	mng->raw = mlx5_malloc(MLX5_MEM_ANY | MLX5_MEM_ZERO, sz, pgsz,
++	mng->raw = mlx5_malloc_dma(MLX5_MEM_ANY | MLX5_MEM_ZERO, sz, pgsz,
+ 			SOCKET_ID_ANY);
+ 	if (mng->raw == NULL) {
+ 		rte_flow_error_set(error, ENOMEM,
+diff --git a/drivers/net/mlx5/mlx5_trigger.c b/drivers/net/mlx5/mlx5_trigger.c
+index a907c61..3891b1c 100644
+--- a/drivers/net/mlx5/mlx5_trigger.c
++++ b/drivers/net/mlx5/mlx5_trigger.c
+@@ -1175,8 +1175,9 @@ static int mlx5_dev_allocate_consec_tx_mem(struct rte_eth_dev *dev)
+ 	 * round-up again. One queue have two DBs (for CQ + WQ).
+ 	 */
+ 	total_size += MLX5_DBR_SIZE * priv->txqs_n * 2;
+-	umem_buf = mlx5_malloc_numa_tolerant(MLX5_MEM_RTE | MLX5_MEM_ZERO, total_size,
+-					     alignment, priv->sh->numa_node);
++	/* 该缓冲区随后被 umem 注册给设备，机密虚拟机下必须来自共享区。 */
++	umem_buf = mlx5_malloc_dma(MLX5_MEM_RTE | MLX5_MEM_ZERO, total_size,
++				   alignment, priv->sh->numa_node);
+ 	if (!umem_buf) {
+ 		DRV_LOG(ERR, "Failed to allocate consecutive memory for TxQs.");
+ 		rte_errno = ENOMEM;
+-- 
+2.53.0
+
