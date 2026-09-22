@@ -179,9 +179,36 @@ lkey 的拼法照 DPDK：`(mkey_index << 8) | (umem_id & 0xff)`。
 - 写方向：网卡写 CQE 进共享内存（NOP 实验）
 - 读方向：网卡读 WQE、doorbell record、以及帧数据（本实验）
 
-### D3b. RQ（接收队列）与真实收包
-NOP 只验证了发送方向的 CQE 写回。接收方向还需要 RQ + RWQ + 实际收包，
-以及 mkey（数据缓冲区需要 lkey）。
+### D3b. 接收方向 —— 队列全部建成，卡在**流量引导**（与 SNP 无关）
+
+已完成：接收 CQ、RQ（缓冲区在共享内存 +0x18000）、16 个接收描述符
+（缓冲区 +0x40000）、RQ 进入 RDY、TIR（DIRECT 模式直指该 RQ）
+—— **全部创建成功**。
+
+卡住的是把流量导向这个 TIR。两套 API 都试过：
+
+| 方式 | 结果 |
+|---|---|
+| `mlx5dv_create_flow`（内核 verbs 流引导） | 规则下发成功，但**不匹配任何流量** |
+| `mlx5dv_dr_*`（Direct Rules，DPDK 用的那套） | `dr_domain_create` 返回 **ENODEV** |
+
+verbs 那条路做过二分诊断：把动作换成 DROP，ping 依然 0% 丢包，
+说明规则根本没匹配上，问题在 TIR/RQ 的**上游**。
+
+DR 那条路即使用 `mlx5dv_open_device()` 带 `MLX5DV_CONTEXT_FLAGS_DEVX`
+打开上下文（DPDK 的做法）仍然 ENODEV，说明本环境的 SW steering 不可用。
+
+**重要判断：这不是共享内存的问题。**
+网卡对共享内存的读和写都已经独立证实：
+- 写：CQE（不可伪造的 qpn + 硬件时间戳）
+- 读：帧数据（主机 tcpdump 字节级一致）
+
+RX 数据落地是又一次「写」，机制与 CQE 同源。现在缺的只是把包导过来。
+
+**而流量引导正是 DPDK 的 mlx5 PMD 已经解决的事**（`rte_flow_isolate()`
+加端口配置，带一整套能力探测和多级回退）。我们的补丁要做的是让 DPDK
+现有的队列内存改用共享内存，不需要重新发明引导逻辑。所以这个阻塞点
+很可能在真正做 DPDK 集成时自然消失，不值得在独立探针里继续深挖。
 
 ### D4. 多进程 / 并发
 没测过两个进程同时分配、或一个 buffer 被多个 attachment 导入。

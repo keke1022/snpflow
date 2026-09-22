@@ -30,6 +30,8 @@
 #include <sys/mman.h>
 #include <time.h>
 #include <unistd.h>
+#include <stddef.h>
+#include <infiniband/mlx5dv.h>
 
 #include "mlx5_prm.h"          /* DPDK 的 PRM 定义，经 prm/ 垫片引入 */
 #include "kmod/cvm_shared.h"
@@ -50,10 +52,21 @@
 #define SZ_DBR        64
 #define OFF_DATA      0x30000                           /* 192KB，发包数据缓冲区 */
 #define SZ_DATA       2048
+/* ---- RX 方向 ---- */
+#define OFF_RCQ       0x8000                            /* 收包 CQ，与发包 CQ 分开避免索引混淆 */
+#define OFF_RQ        0x18000                           /* 接收队列 */
+#define RQ_LOG_SIZE   4                                 /* 16 个接收描述符 */
+#define RQ_N          (1u << RQ_LOG_SIZE)
+#define RQ_STRIDE     16                                /* 每个描述符一个 scatter 段 */
+#define OFF_RXBUF     0x40000                           /* 收包缓冲区起点 */
+#define RXBUF_SZ      2048
+#define DBR_RCQ_OFF   16
+#define DBR_RQ_OFF    24
 #define TOTAL_SIZE    (1u << 20)                        /* 1MB，够用且跨不过一个 2MB 块 */
 
 #define DBR_CQ_OFF    0    /* doorbell record 里 CQ 用前 8 字节 */
 #define DBR_SQ_OFF    8    /* SQ 用接下来 8 字节 */
+#define RX_WAIT_SEC   20
 
 static struct ibv_context *ctx;
 static int fails;
@@ -85,8 +98,14 @@ int main(void)
 	struct mlx5dv_devx_uar *uar = NULL;
 	struct mlx5dv_devx_umem *umem = NULL;
 	struct mlx5dv_devx_obj *cq_obj = NULL, *tis_obj = NULL, *sq_obj = NULL;
-	struct mlx5dv_devx_obj *mkey_obj = NULL;
-	uint32_t lkey = 0;
+	struct mlx5dv_devx_obj *mkey_obj = NULL, *rcq_obj = NULL;
+	struct mlx5dv_devx_obj *rq_obj = NULL, *tir_obj = NULL;
+	struct mlx5dv_dr_domain *dr_dom = NULL;
+	struct mlx5dv_dr_table *dr_tbl = NULL;
+	struct mlx5dv_dr_matcher *dr_match = NULL;
+	struct mlx5dv_dr_action *dr_act = NULL;
+	struct mlx5dv_dr_rule *dr_rule = NULL;
+	uint32_t lkey = 0, rcqn = 0, rqn = 0;
 	struct mlx5dv_obj dv_obj;
 	struct mlx5dv_pd dv_pd;
 	uint32_t pdn = 0, eqn = 0, cqn = 0, tisn = 0, sqn = 0, tdn = 0;
@@ -97,8 +116,24 @@ int main(void)
 
 	devs = ibv_get_device_list(&ndev);
 	if (!devs || ndev < 1) { fprintf(stderr, "无 RDMA 设备\n"); return 1; }
-	ctx = ibv_open_device(devs[0]);
-	if (!ctx) { perror("ibv_open_device"); return 1; }
+	/* 必须用 mlx5dv_open_device 带 DEVX 标志打开：
+	 * 普通 ibv_open_device 下 mlx5dv_dr_domain_create 会返回 ENODEV。
+	 * DPDK 的 mlx5 PMD 也是这么开的。 */
+	{
+		struct mlx5dv_context_attr attr;
+		memset(&attr, 0, sizeof(attr));
+		attr.flags = MLX5DV_CONTEXT_FLAGS_DEVX;
+		errno = 0;
+		ctx = mlx5dv_open_device(devs[0], &attr);
+		if (!ctx) {
+			info("mlx5dv_open_device(DEVX) 失败: %s，退回普通打开",
+			     strerror(errno));
+			ctx = ibv_open_device(devs[0]);
+		} else {
+			printf("（已用 DEVX 标志打开设备）\n");
+		}
+	}
+	if (!ctx) { perror("open_device"); return 1; }
 	printf("设备: %s\n", ibv_get_device_name(devs[0]));
 
 	/* ---------------- 1. PD / pdn ---------------- */
@@ -493,9 +528,245 @@ int main(void)
 		}
 	}
 
+	/* ---------------- 10. RX: 收包 CQ ---------------- */
+	printf("\n=== [10] 建立接收方向：CQ / RQ / TIR / 流规则 ===\n");
+	{
+		uint32_t in[MLX5_ST_SZ_DW(create_cq_in)] = {0};
+		uint32_t out[MLX5_ST_SZ_DW(create_cq_out)] = {0};
+		void *cqc = MLX5_ADDR_OF(create_cq_in, in, cq_context);
+
+		memset((void *)(base + OFF_RCQ), 0xff, CQ_N * CQE_SIZE);
+		__sync_synchronize();
+
+		MLX5_SET(create_cq_in, in, opcode, MLX5_CMD_OP_CREATE_CQ);
+		MLX5_SET(create_cq_in, in, cq_umem_id, umem->umem_id);
+		MLX5_SET64(create_cq_in, in, cq_umem_offset, OFF_RCQ);
+		MLX5_SET(create_cq_in, in, cq_umem_valid, 1);
+		MLX5_SET(cqc, cqc, log_cq_size, CQ_LOG_SIZE);
+		MLX5_SET(cqc, cqc, uar_page, uar->page_id);
+		MLX5_SET(cqc, cqc, c_eqn, eqn);
+		MLX5_SET(cqc, cqc, dbr_umem_id, umem->umem_id);
+		MLX5_SET(cqc, cqc, dbr_umem_valid, 1);
+		MLX5_SET64(cqc, cqc, dbr_addr, OFF_DBR + DBR_RCQ_OFF);
+		MLX5_SET(cqc, cqc, cqe_sz, 0);
+
+		errno = 0;
+		rcq_obj = mlx5dv_devx_obj_create(ctx, in, sizeof(in), out, sizeof(out));
+		if (!rcq_obj) { bad("CREATE_CQ (RX)"); goto out; }
+		rcqn = MLX5_GET(create_cq_out, out, cqn);
+		ok("接收 CQ: cqn = %u", rcqn);
+	}
+
+	/* ---------------- 11. RQ ---------------- */
+	{
+		uint32_t in[MLX5_ST_SZ_DW(create_rq_in)] = {0};
+		uint32_t out[MLX5_ST_SZ_DW(create_rq_out)] = {0};
+		void *rqc = MLX5_ADDR_OF(create_rq_in, in, ctx);
+		void *wq  = MLX5_ADDR_OF(rqc, rqc, wq);
+
+		MLX5_SET(create_rq_in, in, opcode, MLX5_CMD_OP_CREATE_RQ);
+		MLX5_SET(rqc, rqc, cqn, rcqn);
+		MLX5_SET(rqc, rqc, state, MLX5_RQC_STATE_RST);
+		MLX5_SET(rqc, rqc, flush_in_error_en, 1);
+
+		MLX5_SET(wq, wq, wq_type, MLX5_WQ_TYPE_CYCLIC);
+		MLX5_SET(wq, wq, log_wq_stride, 4);        /* 16 字节一个 scatter 段 */
+		MLX5_SET(wq, wq, log_wq_sz, RQ_LOG_SIZE);
+		MLX5_SET(wq, wq, pd, pdn);
+		MLX5_SET(wq, wq, wq_umem_id, umem->umem_id);
+		MLX5_SET64(wq, wq, wq_umem_offset, OFF_RQ);
+		MLX5_SET(wq, wq, wq_umem_valid, 1);
+		MLX5_SET(wq, wq, dbr_umem_id, umem->umem_id);
+		MLX5_SET(wq, wq, dbr_umem_valid, 1);
+		MLX5_SET64(wq, wq, dbr_addr, OFF_DBR + DBR_RQ_OFF);
+
+		errno = 0;
+		rq_obj = mlx5dv_devx_obj_create(ctx, in, sizeof(in), out, sizeof(out));
+		if (!rq_obj) {
+			bad("CREATE_RQ (syndrome=0x%x)", MLX5_GET(create_rq_out, out, syndrome));
+			goto out;
+		}
+		rqn = MLX5_GET(create_rq_out, out, rqn);
+		ok("RQ 创建成功: rqn = %u（缓冲区在共享内存 +0x%x）", rqn, OFF_RQ);
+	}
+
+	/* 投递接收描述符：每个 16 字节 {byte_count, lkey, addr} */
+	{
+		volatile uint32_t *rwqe = (volatile uint32_t *)(base + OFF_RQ);
+
+		for (unsigned i = 0; i < RQ_N; i++) {
+			uint64_t off = OFF_RXBUF + (uint64_t)i * RXBUF_SZ;
+
+			rwqe[i * 4 + 0] = htobe32(RXBUF_SZ);
+			rwqe[i * 4 + 1] = htobe32(lkey);
+			rwqe[i * 4 + 2] = htobe32((uint32_t)(off >> 32));
+			rwqe[i * 4 + 3] = htobe32((uint32_t)off);
+		}
+		memset((void *)(base + OFF_RXBUF), 0, RQ_N * RXBUF_SZ);
+		__sync_synchronize();
+		dbr[DBR_RQ_OFF / 4] = htobe32(RQ_N);   /* 生产者索引 */
+		__sync_synchronize();
+		ok("投递 %u 个接收描述符，缓冲区在共享内存 +0x%x", RQ_N, OFF_RXBUF);
+	}
+
+	/* RQ: RST -> RDY */
+	{
+		uint32_t in[MLX5_ST_SZ_DW(modify_rq_in)] = {0};
+		uint32_t out[MLX5_ST_SZ_DW(modify_rq_out)] = {0};
+		void *rqc = MLX5_ADDR_OF(modify_rq_in, in, ctx);
+
+		MLX5_SET(modify_rq_in, in, opcode, MLX5_CMD_OP_MODIFY_RQ);
+		MLX5_SET(modify_rq_in, in, rq_state, MLX5_RQC_STATE_RST);
+		MLX5_SET(modify_rq_in, in, rqn, rqn);
+		MLX5_SET(rqc, rqc, state, MLX5_RQC_STATE_RDY);
+
+		errno = 0;
+		if (mlx5dv_devx_obj_modify(rq_obj, in, sizeof(in), out, sizeof(out))) {
+			bad("MODIFY_RQ RST->RDY (syndrome=0x%x)",
+			    MLX5_GET(modify_rq_out, out, syndrome));
+			goto out;
+		}
+		ok("RQ 进入 RDY");
+	}
+
+	/* ---------------- 12. TIR（直接指向该 RQ）---------------- */
+	{
+		uint32_t in[MLX5_ST_SZ_DW(create_tir_in)] = {0};
+		uint32_t out[MLX5_ST_SZ_DW(create_tir_out)] = {0};
+		void *tirc = MLX5_ADDR_OF(create_tir_in, in, ctx);
+
+		MLX5_SET(create_tir_in, in, opcode, MLX5_CMD_OP_CREATE_TIR);
+		MLX5_SET(tirc, tirc, disp_type, MLX5_TIRC_DISP_TYPE_DIRECT);
+		MLX5_SET(tirc, tirc, inline_rqn, rqn);
+		MLX5_SET(tirc, tirc, transport_domain, tdn);
+
+		errno = 0;
+		tir_obj = mlx5dv_devx_obj_create(ctx, in, sizeof(in), out, sizeof(out));
+		if (!tir_obj) {
+			bad("CREATE_TIR (syndrome=0x%x)", MLX5_GET(create_tir_out, out, syndrome));
+			goto out;
+		}
+		ok("TIR 创建成功（DIRECT 模式，直接指向 rqn=%u）", rqn);
+	}
+
+	/* ---------------- 13. 流规则：把本机 MAC 的包导向该 TIR ----------------
+	 *
+	 * 用 Direct Rules (DR) API 而不是 mlx5dv_create_flow。
+	 * 后者走内核 verbs 流引导，实测下发成功但不匹配任何流量
+	 * （用 DROP 动作做二分验证：ping 依然 0% 丢包）。
+	 * DPDK 的 mlx5 PMD 走的就是 DR 这条路。
+	 */
+	{
+		struct mlx5dv_flow_match_parameters *mask, *val;
+		size_t psz = offsetof(struct mlx5dv_flow_match_parameters, match_buf) +
+			     MLX5_ST_SZ_BYTES(fte_match_param);
+		static const uint8_t my_mac[6] = {0x60,0x5e,0x65,0xe3,0xb8,0x65};
+
+		mask = calloc(1, psz);
+		val  = calloc(1, psz);
+		if (!mask || !val) { bad("calloc"); goto out; }
+		mask->match_sz = MLX5_ST_SZ_BYTES(fte_match_param);
+		val->match_sz  = MLX5_ST_SZ_BYTES(fte_match_param);
+		{
+			void *m = MLX5_ADDR_OF(fte_match_param, mask->match_buf, outer_headers);
+			void *v = MLX5_ADDR_OF(fte_match_param, val->match_buf, outer_headers);
+			uint8_t *mm = MLX5_ADDR_OF(fte_match_set_lyr_2_4, m, dmac_47_16);
+			uint8_t *vv = MLX5_ADDR_OF(fte_match_set_lyr_2_4, v, dmac_47_16);
+
+			memset(mm, 0xff, 6);      /* dmac_47_16 与 dmac_15_0 相邻，6 字节连写 */
+			memcpy(vv, my_mac, 6);
+		}
+
+		errno = 0;
+		dr_dom = mlx5dv_dr_domain_create(ctx, MLX5DV_DR_DOMAIN_TYPE_NIC_RX);
+		if (!dr_dom) { bad("dr_domain_create"); free(mask); free(val); goto out; }
+
+		dr_tbl = mlx5dv_dr_table_create(dr_dom, 0);
+		if (!dr_tbl) { bad("dr_table_create(level 0)"); free(mask); free(val); goto out; }
+
+		dr_match = mlx5dv_dr_matcher_create(dr_tbl, 0, 1 /* outer_headers */, mask);
+		if (!dr_match) { bad("dr_matcher_create"); free(mask); free(val); goto out; }
+
+		if (getenv("CVM_FLOW_DROP")) {
+			dr_act = mlx5dv_dr_action_create_drop();
+			info("诊断模式：动作设为 DROP");
+		} else {
+			dr_act = mlx5dv_dr_action_create_dest_devx_tir(tir_obj);
+		}
+		if (!dr_act) { bad("dr_action_create"); free(mask); free(val); goto out; }
+
+		{
+			struct mlx5dv_dr_action *acts[1] = { dr_act };
+			errno = 0;
+			dr_rule = mlx5dv_dr_rule_create(dr_match, val, 1, acts);
+		}
+		free(mask); free(val);
+		if (!dr_rule) { bad("dr_rule_create"); goto out; }
+		ok("DR 流规则已下发：目的 MAC 60:5e:65:e3:b8:65 -> 本 TIR");
+	}
+
+	/* ---------------- 14. 等待收包 ---------------- */
+	printf("\n=== [14] 等待收包 —— 请在主机上执行: ping 172.31.255.2 ===\n");
+	{
+		struct timespec t0, t1;
+		int got = 0;
+
+		info("最多等待 %d 秒……", RX_WAIT_SEC);
+		clock_gettime(CLOCK_MONOTONIC, &t0);
+		for (;;) {
+			volatile uint8_t *cqe = base + OFF_RCQ;
+			uint8_t op_own = cqe[CQE_SIZE - 1];
+
+			if ((op_own & 0x1) == 0 && op_own != 0xff) { got = 1; break; }
+			clock_gettime(CLOCK_MONOTONIC, &t1);
+			if (t1.tv_sec - t0.tv_sec > RX_WAIT_SEC) break;
+		}
+
+		if (!got) {
+			bad("超时：接收 CQ 没有被网卡写入");
+			info("若发送方向已通过而这里不通，重点查流规则是否生效");
+		} else {
+			volatile uint8_t *cqe = base + OFF_RCQ;
+			uint8_t op_own = cqe[CQE_SIZE - 1];
+			uint8_t opcode = op_own >> 4;
+			uint32_t bcnt = be32toh(*(volatile uint32_t *)(cqe + 0x2c));
+			uint16_t wqe_cnt = be16toh(*(volatile uint16_t *)(cqe + 0x3c));
+			volatile uint8_t *pkt = base + OFF_RXBUF + (uint64_t)wqe_cnt * RXBUF_SZ;
+
+			info("CQE: opcode=0x%x byte_cnt=%u wqe_counter=%u",
+			     opcode, bcnt, wqe_cnt);
+			if (opcode == 13 || opcode == 14) {
+				bad("错误 CQE");
+			} else if (bcnt == 0 || bcnt > RXBUF_SZ) {
+				bad("byte_cnt 异常: %u", bcnt);
+			} else {
+				ok("**收到 %u 字节，网卡把包 DMA 写进了共享内存**", bcnt);
+				printf("         目的 MAC: ");
+				for (int i = 0; i < 6; i++) printf("%02x%s", pkt[i], i<5?":":"");
+				printf("  源 MAC: ");
+				for (int i = 6; i < 12; i++) printf("%02x%s", pkt[i], i<11?":":"");
+				printf("\n         ethertype: 0x%02x%02x\n", pkt[12], pkt[13]);
+				printf("         前 48 字节: ");
+				for (unsigned i = 0; i < 48 && i < bcnt; i++)
+					printf("%02x ", pkt[i]);
+				printf("\n");
+				if (pkt[0] == 0x60 && pkt[1] == 0x5e && pkt[5] == 0x65)
+					ok("目的 MAC 与流规则匹配，收包路径完整打通");
+			}
+		}
+	}
+
 out:
 	printf("\n==================== 小结 ====================\n");
 	printf("失败项: %d\n", fails);
+	if (dr_rule) mlx5dv_dr_rule_destroy(dr_rule);
+	if (dr_act) mlx5dv_dr_action_destroy(dr_act);
+	if (dr_match) mlx5dv_dr_matcher_destroy(dr_match);
+	if (dr_tbl) mlx5dv_dr_table_destroy(dr_tbl);
+	if (dr_dom) mlx5dv_dr_domain_destroy(dr_dom);
+	if (tir_obj) mlx5dv_devx_obj_destroy(tir_obj);
+	if (rq_obj) mlx5dv_devx_obj_destroy(rq_obj);
+	if (rcq_obj) mlx5dv_devx_obj_destroy(rcq_obj);
 	if (mkey_obj) mlx5dv_devx_obj_destroy(mkey_obj);
 	if (sq_obj) mlx5dv_devx_obj_destroy(sq_obj);
 	if (tis_obj) mlx5dv_devx_obj_destroy(tis_obj);
