@@ -48,6 +48,8 @@
 #define SZ_SQ         (SQ_N * WQE_BB)                   /* 4KB */
 #define OFF_DBR       0x20000                           /* 128KB */
 #define SZ_DBR        64
+#define OFF_DATA      0x30000                           /* 192KB，发包数据缓冲区 */
+#define SZ_DATA       2048
 #define TOTAL_SIZE    (1u << 20)                        /* 1MB，够用且跨不过一个 2MB 块 */
 
 #define DBR_CQ_OFF    0    /* doorbell record 里 CQ 用前 8 字节 */
@@ -83,6 +85,8 @@ int main(void)
 	struct mlx5dv_devx_uar *uar = NULL;
 	struct mlx5dv_devx_umem *umem = NULL;
 	struct mlx5dv_devx_obj *cq_obj = NULL, *tis_obj = NULL, *sq_obj = NULL;
+	struct mlx5dv_devx_obj *mkey_obj = NULL;
+	uint32_t lkey = 0;
 	struct mlx5dv_obj dv_obj;
 	struct mlx5dv_pd dv_pd;
 	uint32_t pdn = 0, eqn = 0, cqn = 0, tisn = 0, sqn = 0, tdn = 0;
@@ -368,9 +372,131 @@ int main(void)
 		}
 	}
 
+	/* ---------------- 8. D2: 基于 umem 创建 mkey ---------------- */
+	printf("\n=== [8] 基于 umem 创建 mkey（D2）===\n");
+	{
+		uint32_t in[MLX5_ST_SZ_DW(create_mkey_in)] = {0};
+		uint32_t out[MLX5_ST_SZ_DW(create_mkey_out)] = {0};
+		void *mkc = MLX5_ADDR_OF(create_mkey_in, in, memory_key_mkey_entry);
+		uint32_t xlat = (uint32_t)(((TOTAL_SIZE + 4095) / 4096) * 4096 * 8 / 16);
+
+		MLX5_SET(create_mkey_in, in, opcode, MLX5_CMD_OP_CREATE_MKEY);
+		MLX5_SET(create_mkey_in, in, mkey_umem_id, umem->umem_id);
+		MLX5_SET(create_mkey_in, in, translations_octword_actual_size, xlat);
+		MLX5_SET(create_mkey_in, in, pg_access, 0);
+
+		MLX5_SET(mkc, mkc, access_mode_1_0, MLX5_MKC_ACCESS_MODE_MTT);
+		MLX5_SET(mkc, mkc, log_page_size, 12);      /* 4KB */
+		MLX5_SET(mkc, mkc, lw, 1);
+		MLX5_SET(mkc, mkc, lr, 1);
+		MLX5_SET(mkc, mkc, qpn, 0xffffff);
+		MLX5_SET(mkc, mkc, pd, pdn);
+		MLX5_SET(mkc, mkc, mkey_7_0, umem->umem_id & 0xff);
+		MLX5_SET(mkc, mkc, translations_octword_size, xlat);
+		/* umem 注册时 addr 传的是 0，所以这里也用偏移语义 */
+		MLX5_SET64(mkc, mkc, start_addr, 0);
+		MLX5_SET64(mkc, mkc, len, TOTAL_SIZE);
+
+		errno = 0;
+		mkey_obj = mlx5dv_devx_obj_create(ctx, in, sizeof(in), out, sizeof(out));
+		if (!mkey_obj) {
+			bad("CREATE_MKEY (syndrome=0x%x)",
+			    MLX5_GET(create_mkey_out, out, syndrome));
+			goto out;
+		}
+		lkey = (MLX5_GET(create_mkey_out, out, mkey_index) << 8) |
+		       (umem->umem_id & 0xff);
+		ok("mkey 创建成功, lkey = 0x%x —— D2 通过", lkey);
+		info("说明共享内存可以直接作为数据缓冲区被网卡寻址");
+	}
+
+	/* ---------------- 9. 从共享内存发一个真实以太网帧 ---------------- */
+	printf("\n=== [9] 发送真实帧：网卡需从共享内存 DMA 读数据 ===\n");
+	{
+		volatile uint8_t *data = base + OFF_DATA;
+		volatile uint32_t *wqe = (volatile uint32_t *)(sq_buf + WQE_BB);
+		const uint16_t ETHERTYPE = 0x88b5;   /* 本地实验用 */
+		const char *payload = "CVM-SHARED-DMA-READ-PROOF";
+		unsigned frame_len;
+		struct timespec t0, t1;
+		int got = 0;
+
+		/* 目的 MAC = 主机 PF0，源 MAC = guest 网卡 */
+		static const uint8_t dst[6] = {0x60,0x5e,0x65,0xe3,0xb8,0x64};
+		static const uint8_t src[6] = {0x60,0x5e,0x65,0xe3,0xb8,0x65};
+
+		for (int i = 0; i < 6; i++) data[i] = dst[i];
+		for (int i = 0; i < 6; i++) data[6 + i] = src[i];
+		data[12] = ETHERTYPE >> 8;
+		data[13] = ETHERTYPE & 0xff;
+		for (unsigned i = 0; i < strlen(payload); i++)
+			data[14 + i] = payload[i];
+		frame_len = 14 + strlen(payload);
+		/* 补到 60 字节最小帧长 */
+		while (frame_len < 60) data[frame_len++] = 0x00;
+		__sync_synchronize();
+
+		info("帧已写入共享内存 +0x%x, 长度 %u, 载荷 \"%s\"",
+		     OFF_DATA, frame_len, payload);
+
+		/* 控制段 */
+		wqe[0] = htobe32((1u << 8) | MLX5_OPCODE_SEND);   /* wqe_index = 1 */
+		wqe[1] = htobe32((sqn << 8) | 3);                 /* ds = 3 个 16B 段 */
+		wqe[2] = htobe32(MLX5_COMP_ALWAYS << 2);
+		wqe[3] = 0;
+		/* 以太网段：不内联头部 */
+		wqe[4] = 0; wqe[5] = 0; wqe[6] = 0; wqe[7] = 0;
+		/* 数据段：{byte_count, lkey, addr} —— addr 用 umem 内偏移 */
+		wqe[8]  = htobe32(frame_len);
+		wqe[9]  = htobe32(lkey);
+		wqe[10] = htobe32(0);
+		wqe[11] = htobe32(OFF_DATA);
+		__sync_synchronize();
+
+		dbr[DBR_SQ_OFF / 4] = htobe32(2);   /* 生产者索引推进到 2 */
+		__sync_synchronize();
+		*(volatile uint64_t *)uar->reg_addr = *(volatile uint64_t *)wqe;
+		__sync_synchronize();
+		info("doorbell 已敲响，等待完成通知");
+
+		clock_gettime(CLOCK_MONOTONIC, &t0);
+		for (;;) {
+			volatile uint8_t *cqe = cq_buf + CQE_SIZE;   /* 第 1 个 CQE */
+			uint8_t op_own = cqe[CQE_SIZE - 1];
+
+			if ((op_own & 0x1) == 0 && op_own != 0xff) { got = 1; break; }
+			clock_gettime(CLOCK_MONOTONIC, &t1);
+			if (t1.tv_sec - t0.tv_sec > 5) break;
+		}
+
+		if (!got) {
+			bad("超时：没有收到发送完成通知");
+		} else {
+			volatile uint8_t *cqe = cq_buf + CQE_SIZE;
+			uint8_t op_own = cqe[CQE_SIZE - 1];
+			uint8_t opcode = op_own >> 4;
+			uint32_t qpn_f = be32toh(*(volatile uint32_t *)(cqe + 0x38)) & 0xffffff;
+			uint16_t wc = be16toh(*(volatile uint16_t *)(cqe + 0x3c));
+
+			info("CQE: opcode=0x%x qpn=%u wqe_counter=%u", opcode, qpn_f, wc);
+			if (opcode == 0 && qpn_f == sqn) {
+				ok("**发送完成，网卡从共享内存 DMA 读走了帧数据**");
+				ok("请在主机侧 tcpdump 确认收到载荷 \"%s\"", payload);
+			} else if (opcode == 13 || opcode == 14) {
+				bad("错误 CQE (opcode=0x%x)", opcode);
+				printf("         CQE 全部 64 字节: ");
+				for (int i = 0; i < 64; i++) printf("%02x ", cqe[i]);
+				printf("\n");
+			} else {
+				bad("CQE 异常: opcode=0x%x qpn=%u", opcode, qpn_f);
+			}
+		}
+	}
+
 out:
 	printf("\n==================== 小结 ====================\n");
 	printf("失败项: %d\n", fails);
+	if (mkey_obj) mlx5dv_devx_obj_destroy(mkey_obj);
 	if (sq_obj) mlx5dv_devx_obj_destroy(sq_obj);
 	if (tis_obj) mlx5dv_devx_obj_destroy(tis_obj);
 	if (cq_obj) mlx5dv_devx_obj_destroy(cq_obj);

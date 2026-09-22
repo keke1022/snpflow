@@ -145,10 +145,28 @@ CPU 经 mmap 读到 CQE
 CQ、传输域、TIS、SQ、RST→RDY 全部成功，缓冲区均在共享内存里。
 PRM 定义通过 `prm/` 垫片复用 DPDK 的 `mlx5_prm.h`，未手工抄写。
 
-### D2. 能否基于这个 umem 建 mkey
-`mlx5_devx_mkey_attr` 有 `umem_id` 字段，`mlx5_devx_cmd_mkey_create()`
-会把它写进 PRM 命令，Windows 版 `mlx5_os_reg_mr` 就是这么做的。
-**设计上应该可行，但没实测。**
+### ~~D2. 能否基于这个 umem 建 mkey~~ —— 已验证通过（2026-09-21）
+`CREATE_MKEY` 以 `mkey_umem_id = umem_id`、`access_mode = MTT`、
+`log_page_size = 12`、`start_addr = 0`（与 umem 注册时 `addr=0` 的偏移语义
+一致）创建成功，得到 `lkey = 0x1bf601`。
+
+lkey 的拼法照 DPDK：`(mkey_index << 8) | (umem_id & 0xff)`。
+
+**并且实测可用**：用这个 lkey 发了一个真实以太网帧（见下）。
+
+### ~~发送方向数据面~~ —— 已验证通过
+在共享内存 +0x30000 处构造一个 60 字节以太帧（ethertype 0x88b5，
+载荷 "CVM-SHARED-DMA-READ-PROOF"），投递 SEND 任务单，
+数据段为 `{byte_count=60, lkey, addr=0x30000}`。
+
+结果：
+- CQE 正常（opcode=0 REQ，qpn 匹配 sqn，wqe_counter=1）
+- **主机 PF0 计数器 rx_packets +1、rx_bytes +60**，与构造的帧长完全一致
+
+即网卡确实**从共享内存 DMA 读走了帧数据**并发上了网线。
+至此收发两个方向的 DMA 都已证实：
+- 写方向：网卡写 CQE 进共享内存（NOP 实验）
+- 读方向：网卡读 WQE、doorbell record、以及帧数据（本实验）
 
 ### D3b. RQ（接收队列）与真实收包
 NOP 只验证了发送方向的 CQE 写回。接收方向还需要 RQ + RWQ + 实际收包，
