@@ -106,6 +106,7 @@ int main(void)
 	struct mlx5dv_dr_action *dr_act = NULL;
 	struct mlx5dv_dr_rule *dr_rule = NULL;
 	uint32_t lkey = 0, rcqn = 0, rqn = 0;
+	uint64_t mkey_base = 0;
 	struct mlx5dv_obj dv_obj;
 	struct mlx5dv_pd dv_pd;
 	uint32_t pdn = 0, eqn = 0, cqn = 0, tisn = 0, sqn = 0, tdn = 0;
@@ -428,8 +429,11 @@ int main(void)
 		MLX5_SET(mkc, mkc, pd, pdn);
 		MLX5_SET(mkc, mkc, mkey_7_0, umem->umem_id & 0xff);
 		MLX5_SET(mkc, mkc, translations_octword_size, xlat);
-		/* umem 注册时 addr 传的是 0，所以这里也用偏移语义 */
-		MLX5_SET64(mkc, mkc, start_addr, 0);
+		/* 默认偏移语义（start_addr=0）；设 CVM_MKEY_VA 则改用 mmap 后的
+		 * 虚拟地址作 start_addr —— 若可行，WQE 里就能直填 VA，
+		 * 与 DPDK 的 IOVA=VA 模式对齐，集成更干净。 */
+		mkey_base = getenv("CVM_MKEY_VA") ? (uint64_t)(uintptr_t)base : 0;
+		MLX5_SET64(mkc, mkc, start_addr, mkey_base);
 		MLX5_SET64(mkc, mkc, len, TOTAL_SIZE);
 
 		errno = 0;
@@ -484,8 +488,13 @@ int main(void)
 		/* 数据段：{byte_count, lkey, addr} —— addr 用 umem 内偏移 */
 		wqe[8]  = htobe32(frame_len);
 		wqe[9]  = htobe32(lkey);
-		wqe[10] = htobe32(0);
-		wqe[11] = htobe32(OFF_DATA);
+		{
+			uint64_t dseg_addr = mkey_base + OFF_DATA;
+			wqe[10] = htobe32((uint32_t)(dseg_addr >> 32));
+			wqe[11] = htobe32((uint32_t)dseg_addr);
+			info("数据段地址 = 0x%llx (%s)", (unsigned long long)dseg_addr,
+			     mkey_base ? "VA 语义" : "偏移语义");
+		}
 		__sync_synchronize();
 
 		dbr[DBR_SQ_OFF / 4] = htobe32(2);   /* 生产者索引推进到 2 */

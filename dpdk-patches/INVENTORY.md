@@ -1,0 +1,114 @@
+# DPDK 25.11.3 mlx5：所有需要改道的 DMA 内存注册点
+
+改道的对象不只是注册调用，而是**分配器 + 注册**这一对。
+下面按「注册方式」分类，每项都标明内存由谁分配、对齐要求。
+
+---
+
+## 类别 A：走 `mr_scache.reg_mr_cb`（注册已改道，分配器待改）
+
+这些是**探测阶段**就会触发的驱动内部杂项内存 —— 第一次跑 testpmd
+失败在 `mlx5_flow_aso.c` 这一类，不是 mempool。
+
+| 位置 | 用途 | 分配器 | 对齐 |
+|---|---|---|---|
+| `net/mlx5/mlx5_flow_aso.c:62` | ASO 位图 | `mlx5_malloc(MLX5_MEM_RTE\|ZERO, length, 4096, …)` | 4096 |
+| `net/mlx5/mlx5_hws_cnt.c:299` | HWS 计数器 raw | `mlx5_malloc(MLX5_MEM_ANY\|ZERO, sz, pgsz, …)` | pgsz |
+| `net/mlx5/mlx5_flow_quota.c:449` | MTR ASO 读缓冲 | `mlx5_malloc(MLX5_MEM_ANY\|ZERO, rd_buf_size, …)` | — |
+| `common/mlx5/mlx5_common.c:1138` | MR 缓存自身 (`mlx5_mr_create`) | DPDK memseg | — |
+
+注册回调已在 `mlx5_os_set_reg_mr_cb()` 切到 dma-buf 路径，
+但这几处的 `mlx5_malloc` 仍来自普通堆，所以查找表会拒绝它们。
+
+---
+
+## 类别 B：直接调 `mlx5_os_umem_reg`（DevX 队列内存）
+
+四处形态完全一致，且 **doorbell record 就在同一块缓冲区内**
+（偏移 `umem_dbrec = RTE_ALIGN(umem_size, MLX5_DBR_SIZE)`），
+所以一次分配同时覆盖队列与 doorbell。
+
+| 位置 | 用途 | 分配器 |
+|---|---|---|
+| `common/mlx5/mlx5_common_devx.c:126` | CQ | `mlx5_malloc_numa_tolerant(RTE\|ZERO, size, alignment, socket)` |
+| `common/mlx5/mlx5_common_devx.c:278` | SQ | `mlx5_malloc(RTE\|ZERO, size, alignment, socket)` |
+| `common/mlx5/mlx5_common_devx.c:451` | QP | `mlx5_malloc(RTE\|ZERO, size, alignment, socket)` |
+| `common/mlx5/mlx5_common_devx.c:558` | RQ | `mlx5_malloc_numa_tolerant(RTE\|ZERO, size, alignment, socket)` |
+
+**对齐必须保留**：调用方传入的 `alignment` 通常是页大小，
+共享区的子分配器必须支持对齐分配，否则 DevX 创建命令会失败。
+
+---
+
+## 类别 C：绕过 `mlx5_malloc` 的特例
+
+| 位置 | 用途 | 分配器 | 备注 |
+|---|---|---|---|
+| `net/mlx5/hws/mlx5dr_send.c:754` | HWS 发送队列缓冲 | **`posix_memalign`** | 页对齐 |
+| `net/mlx5/hws/mlx5dr_send.c:761` | HWS doorbell | **`posix_memalign`** | 8 字节，**独立分配** |
+
+这两处连 `mlx5_malloc` 都不走，直接 `posix_memalign` +
+`mlx5_glue->devx_umem_reg`。改道时要单独处理。
+
+---
+
+## 类别 D：其它
+
+| 位置 | 用途 | 备注 |
+|---|---|---|
+| `net/mlx5/mlx5_devx.c:1398` | hairpin TX 队列 | `mlx5_malloc` + `mlx5_os_umem_reg` |
+| `net/mlx5/mlx5_trigger.c:1185` | 连续 Tx 内存 | `mlx5_malloc` + `mlx5_os_umem_reg` |
+| `net/mlx5/mlx5_flow.c:9680` | 流计数器 | `mlx5_os_wrapped_mkey_create`（Linux 版内部先调 `ibv_reg_mr`，**对共享区必失败**） |
+
+`mlx5_os_wrapped_mkey_create` 的 Linux 实现是
+`ibv_reg_mr` 再包一层 mkey，对共享区内存这条路是死的，
+需要改成纯 DevX（Windows 版就是现成模板）。
+
+---
+
+## 关键结论
+
+**绝大多数 DMA 内存都经由 `mlx5_malloc()`**，只有 HWS 那两处是例外。
+
+所以改道方式建议：新增一个 DMA 专用分配入口（例如
+`mlx5_malloc_dma(flags, size, align, socket)`），内部在
+cvm_shared 可用时走共享区、否则退回 `mlx5_malloc`。
+然后在上表各点逐一替换 —— 每处都是一行改动。
+
+**不要**把 `mlx5_malloc` 整体改道：它还承担大量非 DMA 用途，
+全量改道既浪费共享内存又不正确。
+
+---
+
+## 两个已确认的环境事实
+
+### 1. `rte_extmem_register` 的 `iova_addrs` 不能传 NULL
+文档明确：`Can be NULL, in which case page IOVA addresses will be set to
+**RTE_BAD_IOVA**`。所以必须自己构造数组，令
+`iova_addrs[i] = (rte_iova_t)(va + i * page_sz)`。
+
+这样 IOVA == VA，与我们 mkey 用虚拟地址作 `start_addr` 的选择一致
+（该选择已实测可行）。
+
+共享区必须先 `rte_extmem_register()`，否则 `mlx5_mr_create()` 里的
+`rte_mem_virt2memseg_list()` 查不到这块内存。
+
+### 2. dummy loopback 队列不是阻塞点，但要加显式报错
+`mlx5_rxq_ibv_obj_dummy_lb_create()` 开头即：
+
+```c
+if (dev->data->dev_conf.lpbk_mode) {
+        ...
+} else {
+        return 0;
+}
+```
+
+不开环回模式就直接返回，不创建任何 verbs 对象。
+但一旦开启，它会走 `dv_create_cq` / `dv_create_qp` —— 在 SNP guest 里
+必然失败。应在 CVM 模式下对 `lpbk_mode` 直接报错，
+而不是让它在底层给出难以理解的失败。
+
+注意：`devx_obj_ops` 里这两个回调本是 `NULL`
+（`mlx5_devx.c:1755-1756`），是 `mlx5_os.c:1781` 之后又把 verbs 版本
+装了回去 —— 所以 DevX 路径下依然会碰到它。
