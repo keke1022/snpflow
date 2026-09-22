@@ -171,12 +171,20 @@ static int cvm_set_decrypted(struct cvm_buffer *buf)
 		ret = set_memory_decrypted(addr, npages);
 		if (ret) {
 			pr_err("set_memory_decrypted failed at chunk %u: %d\n", i, ret);
-			/* 已转的部分回滚，避免留下状态不一致的页 */
+			/*
+			 * 已转的部分回滚。转回失败的页**绝不能**还给伙伴
+			 * 系统 —— 它仍处于 shared 状态，被当私有内存复用时
+			 * 会触发 RMP 不匹配，表现为难以排查的随机崩溃。
+			 * 与正常释放路径一致：置空指针，故意泄漏。
+			 */
 			while (i--) {
 				addr = (unsigned long)page_address(buf->chunks[i].page);
 				npages = 1 << buf->chunks[i].order;
-				if (set_memory_encrypted(addr, npages))
-					pr_err("rollback set_memory_encrypted failed at %u\n", i);
+				if (set_memory_encrypted(addr, npages)) {
+					pr_err("rollback set_memory_encrypted failed at chunk %u; leaking pages\n",
+					       i);
+					buf->chunks[i].page = NULL;
+				}
 			}
 			return ret;
 		}
