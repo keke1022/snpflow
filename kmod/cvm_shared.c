@@ -44,6 +44,8 @@
 #include <linux/capability.h>
 #include <linux/sizes.h>
 #include <linux/iommu.h>
+#include <linux/list.h>
+#include <linux/mutex.h>
 
 #include "cvm_shared.h"
 
@@ -58,6 +60,23 @@ struct cvm_chunk {
 	struct page *page;
 	unsigned int order;
 };
+
+/*
+ * 映射登记：记录每个 mmap 出来的区间属于哪块缓冲区。
+ *
+ * 驱动与应用可能各自申请共享内存，任何一方都无法掌握全部区间，
+ * 但内核知道全部映射。LOOKUP ioctl 据此按虚拟地址反查归属。
+ */
+struct cvm_mapping {
+	struct mm_struct *mm;
+	unsigned long start;
+	unsigned long end;
+	struct cvm_buffer *buf;
+	struct list_head node;
+};
+
+static LIST_HEAD(cvm_mappings);
+static DEFINE_MUTEX(cvm_mappings_lock);
 
 struct cvm_buffer {
 	size_t size;                /* 对齐后的总字节数 */
@@ -343,6 +362,21 @@ static int cvm_mmap(struct dma_buf *dmabuf, struct vm_area_struct *vma)
 		addr += len;
 	}
 
+	/* 登记本次映射，供 LOOKUP 反查 */
+	{
+		struct cvm_mapping *m = kzalloc(sizeof(*m), GFP_KERNEL);
+
+		if (m == NULL)
+			return -ENOMEM;
+		m->mm = vma->vm_mm;
+		m->start = vma->vm_start;
+		m->end = vma->vm_end;
+		m->buf = buf;
+		mutex_lock(&cvm_mappings_lock);
+		list_add(&m->node, &cvm_mappings);
+		mutex_unlock(&cvm_mappings_lock);
+	}
+
 	return 0;
 }
 
@@ -360,6 +394,20 @@ static void cvm_release(struct dma_buf *dmabuf)
 	 */
 	pr_info("release: refcount dropped to zero, converting %zu bytes back to private\n",
 		buf->size);
+
+	/* 清掉本缓冲区的映射登记 */
+	{
+		struct cvm_mapping *m, *tmp;
+
+		mutex_lock(&cvm_mappings_lock);
+		list_for_each_entry_safe(m, tmp, &cvm_mappings, node) {
+			if (m->buf == buf) {
+				list_del(&m->node);
+				kfree(m);
+			}
+		}
+		mutex_unlock(&cvm_mappings_lock);
+	}
 
 	sg_free_table(&buf->sgt);
 	cvm_set_encrypted(buf);
@@ -598,6 +646,47 @@ out:
 	return ret;
 }
 
+/*
+ * 按虚拟地址反查归属，返回一个新的 dma-buf fd 与区内偏移。
+ *
+ * 新 fd 会让 dma-buf 引用计数加一，调用方用完必须 close，
+ * 否则缓冲区永远不会转回私有。
+ */
+static int cvm_do_lookup(struct cvm_shared_lookup *req, struct dma_buf **out)
+{
+	struct cvm_mapping *m;
+	struct cvm_buffer *buf = NULL;
+	unsigned long va = (unsigned long)req->va;
+	unsigned long start = 0;
+	int fd;
+
+	req->fd = -1;
+
+	mutex_lock(&cvm_mappings_lock);
+	list_for_each_entry(m, &cvm_mappings, node) {
+		if (m->mm == current->mm && va >= m->start && va < m->end) {
+			buf = m->buf;
+			start = m->start;
+			break;
+		}
+	}
+	mutex_unlock(&cvm_mappings_lock);
+
+	if (buf == NULL)
+		return -ENOENT;
+
+	fd = get_unused_fd_flags(O_CLOEXEC);
+	if (fd < 0)
+		return fd;
+	get_dma_buf(buf->dmabuf);   /* 新 fd 会持有一份引用 */
+
+	req->fd = fd;
+	*out = buf->dmabuf;
+	req->offset = va - start;
+	req->len = buf->size;
+	return 0;
+}
+
 static long cvm_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	void __user *uarg = (void __user *)arg;
@@ -607,7 +696,11 @@ static long cvm_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	 * 都能做。这里要求 CAP_SYS_ADMIN，同时设备节点本身建议 0600。
 	 * （dpdk-test-main 的 /proc/setshared 是 0777，任何用户可写。）
 	 */
-	if (!capable(CAP_SYS_ADMIN))
+	/*
+	 * LOOKUP 只查询调用者自己的映射，不制造共享内存，
+	 * 因此不要求 CAP_SYS_ADMIN。
+	 */
+	if (cmd != CVM_SHARED_IOC_LOOKUP && !capable(CAP_SYS_ADMIN))
 		return -EPERM;
 
 	switch (cmd) {
@@ -642,6 +735,25 @@ static long cvm_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			return ret;
 		if (copy_to_user(uarg, &req, sizeof(req)))
 			return -EFAULT;
+		return 0;
+	}
+	case CVM_SHARED_IOC_LOOKUP: {
+		struct cvm_shared_lookup req;
+		struct dma_buf *dmabuf = NULL;
+		int ret;
+
+		if (copy_from_user(&req, uarg, sizeof(req)))
+			return -EFAULT;
+		ret = cvm_do_lookup(&req, &dmabuf);
+		if (ret)
+			return ret;
+		if (copy_to_user(uarg, &req, sizeof(req))) {
+			/* fd 尚未装入 fd 表，可以干净回滚 */
+			put_unused_fd(req.fd);
+			dma_buf_put(dmabuf);
+			return -EFAULT;
+		}
+		fd_install(req.fd, dmabuf->file);
 		return 0;
 	}
 	case CVM_SHARED_IOC_XCHECK: {

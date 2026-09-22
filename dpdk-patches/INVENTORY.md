@@ -112,3 +112,52 @@ if (dev->data->dev_conf.lpbk_mode) {
 注意：`devx_obj_ops` 里这两个回调本是 `NULL`
 （`mlx5_devx.c:1755-1756`），是 `mlx5_os.c:1781` 之后又把 verbs 版本
 装了回去 —— 所以 DevX 路径下依然会碰到它。
+
+---
+
+# 硬约束（实测得出，不可绕过）
+
+## 1. 必须 `dv_flow_en=2`，网卡须支持 HWS
+
+`dv_flow_en=1`（DV 流引擎）在机密虚拟机里**不可用**：它依赖
+rdma-core 的 DR，而 `mlx5dv_dr_create_domain` 会失败。
+
+strace 证实：用户态看到的是 `ENODEV`，但底层真实错误是 **EIO** ——
+rdma-core 的 `dr_send.c` 用 `posix_memalign` + `devx_umem_reg` 建自己的
+发送环，那是私有加密页，注册被拒；`ENODEV` 是清理路径覆盖掉的 errno。
+rdma-core 不在补丁范围内，且改它也无解（verbs CQ 缓冲区要经
+`ib_umem_get` pin 住，共享区内存带 `VM_PFNMAP` 过不去）。
+
+`dv_flow_en=0`（Verbs 流引擎）同样划掉：它会把队列对象一并切回
+verbs 路径，而 `ibv_create_cq` 在 SNP 下本就返回 EIO。
+
+因此**只有 HWS 一条路**，命令行必须带 `dv_flow_en=2`，
+且网卡与固件必须支持 HWS。不支持 HWS 的型号无法使用本方案。
+
+## 2. 必须 `--iova-mode=va`
+
+共享区以 IOVA == VA 登记进 EAL（`rte_extmem_register` 的 `iova_addrs`
+显式填 VA），mkey 的 `start_addr` 也用 VA，`buf_iova` 同样填 VA。
+整条链路地址语义一致，前提是 EAL 跑在 VA 模式。
+
+注：`rte_extmem_register` 的 `iova_addrs` 不能传 NULL —— 那会置成
+`RTE_BAD_IOVA`，不是 VA。
+
+## 3. 共享区内存不能走 `ibv_reg_mr`，也不能走普通 `free()`
+
+内核模块用 `remap_pfn_range` 建立用户映射，vma 带 `VM_PFNMAP`，
+`get_user_pages` 无法 pin，按虚拟地址注册返回 **EFAULT**。
+只能以 dma-buf `(fd, 偏移)` 注册。
+
+对应地，`mlx5_malloc_dma()` 分配的内存必须用 `mlx5_free()` 释放。
+交给 `free()` 会得到 `free(): invalid size` 并崩溃 —— 已实际踩到一次
+（HWS 的 `close_sq` 正常路径漏改）。
+
+## 4. 驱动与应用可能各自持有共享区
+
+驱动在探测时申请自己的区，应用（如 testpmd 的 pinned-extbuf 池）
+也可以自己申请。任何一方都掌握不了全部区间。
+
+因此内核模块提供 `CVM_SHARED_IOC_LOOKUP`：按虚拟地址反查归属，
+返回一个新的 dma-buf fd 与区内偏移。驱动在自己的表里查不到时
+回落到内核查询。

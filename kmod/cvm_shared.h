@@ -74,9 +74,31 @@ struct cvm_shared_xcheck {
 	__u64 want;      /* 出参 */
 };
 
+/*
+ * 按虚拟地址反查它属于哪块共享缓冲区。
+ *
+ * 存在多方各自申请共享内存的情况（驱动一块、应用一块），谁都无法
+ * 掌握全部区间，但内核知道每个映射的归属。此接口返回一个**新的**
+ * dma-buf fd（引用计数加一，调用方用完需 close）与区内偏移，
+ * 于是任何一方都能对任意共享地址完成注册。
+ *
+ * va  : 入参，进程内任一地址。
+ * fd  : 出参，指向该缓冲区的新 fd；未找到时为 -1。
+ * offset: 出参，va 相对该缓冲区起点的偏移。
+ * len : 出参，该缓冲区总长度。
+ */
+struct cvm_shared_lookup {
+	__u64 va;
+	__s32 fd;
+	__u32 pad;
+	__u64 offset;
+	__u64 len;
+};
+
 #define CVM_SHARED_IOC_MAGIC 'C'
 #define CVM_SHARED_IOC_ALLOC  _IOWR(CVM_SHARED_IOC_MAGIC, 0x01, struct cvm_shared_alloc)
 #define CVM_SHARED_IOC_LAYOUT _IOWR(CVM_SHARED_IOC_MAGIC, 0x02, struct cvm_shared_layout)
 #define CVM_SHARED_IOC_XCHECK _IOWR(CVM_SHARED_IOC_MAGIC, 0x03, struct cvm_shared_xcheck)
+#define CVM_SHARED_IOC_LOOKUP _IOWR(CVM_SHARED_IOC_MAGIC, 0x04, struct cvm_shared_lookup)
 
 #endif /* _UAPI_CVM_SHARED_H */

@@ -10,17 +10,21 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
+#include <eal_export.h>
 #include <rte_common.h>
-#include <rte_log.h>
+#include <rte_dev.h>
+#include <rte_eal_paging.h>
+#include <rte_errno.h>
 #include <rte_malloc.h>
+#include <rte_memory.h>
 #include <rte_rwlock.h>
 
-#include "mlx5_common.h"
+#include "mlx5_common_log.h"
 #include "mlx5_cvm_shared.h"
 
 /*
- * 与内核模块 cvm_shared 的接口。此处内联定义而不引用内核头文件，
- * 避免给 DPDK 构建引入外部依赖；两边必须保持一致。
+ * 与 cvm_shared 内核模块的接口。此处内联定义，避免给 DPDK 构建
+ * 引入外部头文件依赖；两侧必须保持一致。
  */
 #define CVM_SHARED_DEV "/dev/cvm_shared"
 
@@ -34,60 +38,48 @@ struct cvm_shared_alloc_req {
 #define CVM_SHARED_IOC_ALLOC \
 	_IOWR(CVM_SHARED_IOC_MAGIC, 0x01, struct cvm_shared_alloc_req)
 
-/** 一块已映射的共享区域。 */
-struct mlx5_cvm_region {
-	void *va;                     /* mmap 起始地址 */
-	size_t len;                   /* 长度 */
-	int fd;                       /* dma-buf fd，注册时要用 */
-	struct mlx5_cvm_region *next;
+/** 默认共享区大小。队列、驱动杂项内存与 mbuf 数据区都从这里出。 */
+#define CVM_DEFAULT_REGION_SIZE (512ull << 20)
+
+/** 子分配的最小粒度与记账块。 */
+struct cvm_chunk {
+	void *addr;
+	size_t size;
+	bool used;
+	struct cvm_chunk *next;
 };
 
-static struct mlx5_cvm_region *cvm_regions;
-static rte_rwlock_t cvm_lock = RTE_RWLOCK_INITIALIZER;
-
-RTE_EXPORT_INTERNAL_SYMBOL(mlx5_cvm_shared_available)
-bool
-mlx5_cvm_shared_available(void)
-{
-	static int cached = -1;
+static struct {
+	bool inited;
+	bool enabled;          /* CVM 严格模式 */
+	void *base;
+	size_t len;
 	int fd;
+	struct cvm_chunk *chunks;
+	rte_rwlock_t lock;
+} cvm = { .fd = -1, .lock = RTE_RWLOCK_INITIALIZER };
 
-	if (cached >= 0)
-		return cached != 0;
+/* ------------------------------------------------------------------ */
 
-	fd = open(CVM_SHARED_DEV, O_RDWR);
-	if (fd < 0) {
-		DRV_LOG(DEBUG, "cvm_shared 不可用: %s (%s)",
-			CVM_SHARED_DEV, strerror(errno));
-		cached = 0;
-	} else {
-		close(fd);
-		cached = 1;
-	}
-	return cached != 0;
-}
-
-RTE_EXPORT_INTERNAL_SYMBOL(mlx5_cvm_shared_alloc)
-int
-mlx5_cvm_shared_alloc(size_t size, void **va_out)
+static int
+cvm_region_create(size_t size)
 {
 	struct cvm_shared_alloc_req req = { .size = size, .flags = 0, .fd = -1 };
-	struct mlx5_cvm_region *reg;
+	size_t page_sz = rte_mem_page_size();
+	rte_iova_t *iovas = NULL;
+	struct cvm_chunk *first;
+	unsigned int n_pages;
 	void *va;
-	int dev, ret = 0;
-
-	*va_out = NULL;
+	int dev, ret;
 
 	dev = open(CVM_SHARED_DEV, O_RDWR);
-	if (dev < 0) {
-		DRV_LOG(ERR, "打开 %s 失败: %s", CVM_SHARED_DEV, strerror(errno));
+	if (dev < 0)
 		return -errno;
-	}
 	if (ioctl(dev, CVM_SHARED_IOC_ALLOC, &req) < 0) {
 		ret = -errno;
-		DRV_LOG(ERR, "cvm_shared 分配 %zu 字节失败: %s",
-			size, strerror(errno));
 		close(dev);
+		DRV_LOG(ERR, "cvm_shared 分配 %zu 字节失败: %s",
+			size, strerror(-ret));
 		return ret;
 	}
 	close(dev);
@@ -95,93 +87,264 @@ mlx5_cvm_shared_alloc(size_t size, void **va_out)
 	va = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, req.fd, 0);
 	if (va == MAP_FAILED) {
 		ret = -errno;
-		DRV_LOG(ERR, "映射共享区失败: %s", strerror(errno));
 		close(req.fd);
+		DRV_LOG(ERR, "映射共享区失败: %s", strerror(-ret));
 		return ret;
 	}
 
-	reg = rte_zmalloc("mlx5_cvm_region", sizeof(*reg), 0);
-	if (reg == NULL) {
+	/*
+	 * 必须把共享区登记进 DPDK 的内存表，否则 mlx5_mr_create() 里的
+	 * rte_mem_virt2memseg_list() 查不到这块内存。
+	 *
+	 * iova_addrs 不能传 NULL —— 那会把 IOVA 置成 RTE_BAD_IOVA。
+	 * 这里显式填 IOVA == VA，与 mkey 用虚拟地址作 start_addr 的
+	 * 选择一致，也要求 EAL 以 --iova-mode=va 运行。
+	 */
+	n_pages = size / page_sz;
+	iovas = malloc(sizeof(*iovas) * n_pages);
+	if (iovas == NULL) {
 		munmap(va, size);
 		close(req.fd);
 		return -ENOMEM;
 	}
-	reg->va = va;
-	reg->len = size;
-	reg->fd = req.fd;
+	for (unsigned int i = 0; i < n_pages; i++)
+		iovas[i] = (rte_iova_t)(uintptr_t)va + (rte_iova_t)i * page_sz;
 
-	rte_rwlock_write_lock(&cvm_lock);
-	reg->next = cvm_regions;
-	cvm_regions = reg;
-	rte_rwlock_write_unlock(&cvm_lock);
+	ret = rte_extmem_register(va, size, iovas, n_pages, page_sz);
+	free(iovas);
+	if (ret != 0) {
+		DRV_LOG(ERR, "rte_extmem_register 失败: %s", rte_strerror(rte_errno));
+		munmap(va, size);
+		close(req.fd);
+		return -rte_errno;
+	}
 
-	DRV_LOG(INFO, "共享区已就绪: va=%p len=%zu fd=%d", va, size, req.fd);
-	*va_out = va;
+	first = rte_zmalloc("cvm_chunk", sizeof(*first), 0);
+	if (first == NULL) {
+		rte_extmem_unregister(va, size);
+		munmap(va, size);
+		close(req.fd);
+		return -ENOMEM;
+	}
+	first->addr = va;
+	first->size = size;
+	first->used = false;
+
+	cvm.base = va;
+	cvm.len = size;
+	cvm.fd = req.fd;
+	cvm.chunks = first;
+	DRV_LOG(INFO, "共享区就绪: va=%p len=%zu fd=%d（已 extmem_register，IOVA=VA）",
+		va, size, req.fd);
 	return 0;
+}
+
+RTE_EXPORT_INTERNAL_SYMBOL(mlx5_cvm_shared_init)
+int
+mlx5_cvm_shared_init(size_t size)
+{
+	int fd, ret;
+
+	if (cvm.inited)
+		return 0;
+	cvm.inited = true;
+
+	/*
+	 * 模式在此处确定一次，之后不再改变。
+	 */
+	fd = open(CVM_SHARED_DEV, O_RDWR);
+	if (fd < 0) {
+		DRV_LOG(DEBUG, "未检测到 %s，按非 CVM 环境运行", CVM_SHARED_DEV);
+		cvm.enabled = false;
+		return 0;
+	}
+	close(fd);
+
+	ret = cvm_region_create(size ? size : CVM_DEFAULT_REGION_SIZE);
+	if (ret != 0) {
+		/*
+		 * 检测到 cvm_shared 却建不起共享区，是致命错误：
+		 * 继续用普通内存必然在注册阶段失败，不如就地报错。
+		 */
+		DRV_LOG(ERR, "检测到 cvm_shared 但共享区创建失败，无法继续");
+		return ret;
+	}
+	cvm.enabled = true;
+	DRV_LOG(INFO, "进入 CVM 严格模式：所有 DMA 内存只从共享区分配");
+	return 0;
+}
+
+RTE_EXPORT_INTERNAL_SYMBOL(mlx5_cvm_shared_enabled)
+bool
+mlx5_cvm_shared_enabled(void)
+{
+	return cvm.enabled;
+}
+
+/* ------------------------------------------------------------------ */
+/* 带对齐的子分配器                                                    */
+/* ------------------------------------------------------------------ */
+
+RTE_EXPORT_INTERNAL_SYMBOL(mlx5_cvm_shared_alloc)
+void *
+mlx5_cvm_shared_alloc(size_t size, size_t align)
+{
+	struct cvm_chunk *c;
+	void *result = NULL;
+
+	if (!cvm.enabled || size == 0)
+		return NULL;
+	if (align == 0)
+		align = RTE_CACHE_LINE_SIZE;
+
+	rte_rwlock_write_lock(&cvm.lock);
+	for (c = cvm.chunks; c != NULL; c = c->next) {
+		uintptr_t start, aligned;
+		size_t lead, need;
+
+		if (c->used)
+			continue;
+		start = (uintptr_t)c->addr;
+		aligned = RTE_ALIGN_CEIL(start, align);
+		lead = aligned - start;
+		need = lead + size;
+		if (c->size < need)
+			continue;
+
+		/* 对齐产生的前段留作空闲块 */
+		if (lead != 0) {
+			struct cvm_chunk *head = rte_zmalloc("cvm_chunk",
+							     sizeof(*head), 0);
+			if (head == NULL)
+				break;
+			head->addr = c->addr;
+			head->size = lead;
+			head->used = false;
+			head->next = c;
+			/* 把 head 插到 c 之前 */
+			if (cvm.chunks == c) {
+				cvm.chunks = head;
+			} else {
+				struct cvm_chunk *p = cvm.chunks;
+				while (p->next != c)
+					p = p->next;
+				p->next = head;
+			}
+			c->addr = (void *)aligned;
+			c->size -= lead;
+		}
+
+		/* 尾部多余的切成新的空闲块 */
+		if (c->size > size) {
+			struct cvm_chunk *tail = rte_zmalloc("cvm_chunk",
+							     sizeof(*tail), 0);
+			if (tail == NULL)
+				break;
+			tail->addr = (void *)((uintptr_t)c->addr + size);
+			tail->size = c->size - size;
+			tail->used = false;
+			tail->next = c->next;
+			c->next = tail;
+			c->size = size;
+		}
+
+		c->used = true;
+		result = c->addr;
+		break;
+	}
+	rte_rwlock_write_unlock(&cvm.lock);
+
+	if (result == NULL) {
+		/*
+		 * 严格模式下不回退到普通内存：那只会把失败推迟到
+		 * 注册或数据面，变成更难排查的问题。
+		 */
+		DRV_LOG(ERR,
+			"共享区已用尽，无法分配 %zu 字节（对齐 %zu）。"
+			"请增大共享区大小。",
+			size, align);
+	}
+	return result;
 }
 
 RTE_EXPORT_INTERNAL_SYMBOL(mlx5_cvm_shared_free)
 void
-mlx5_cvm_shared_free(void *va)
+mlx5_cvm_shared_free(void *addr)
 {
-	struct mlx5_cvm_region *reg, **pp;
+	struct cvm_chunk *c, *prev = NULL;
 
-	rte_rwlock_write_lock(&cvm_lock);
-	for (pp = &cvm_regions; (reg = *pp) != NULL; pp = &reg->next) {
-		if (reg->va == va) {
-			*pp = reg->next;
-			break;
-		}
-	}
-	rte_rwlock_write_unlock(&cvm_lock);
-
-	if (reg == NULL) {
-		DRV_LOG(ERR, "释放未知的共享区 %p", va);
+	if (addr == NULL || !cvm.enabled)
 		return;
-	}
 
-	/*
-	 * 顺序无关紧要：dma-buf 的引用计数要等 munmap 之后才归零，
-	 * 内核模块此时才把页转回私有。close(fd) 不会提前触发。
-	 */
-	munmap(reg->va, reg->len);
-	close(reg->fd);
-	rte_free(reg);
-}
+	rte_rwlock_write_lock(&cvm.lock);
+	for (c = cvm.chunks; c != NULL; prev = c, c = c->next) {
+		if (c->addr != addr)
+			continue;
+		c->used = false;
+		/* 与后继空闲块合并 */
+		while (c->next != NULL && !c->next->used) {
+			struct cvm_chunk *n = c->next;
 
-RTE_EXPORT_INTERNAL_SYMBOL(mlx5_cvm_shared_lookup)
-bool
-mlx5_cvm_shared_lookup(const void *addr, int *fd, size_t *offset,
-		       void **base, size_t *len)
-{
-	const uintptr_t a = (uintptr_t)addr;
-	struct mlx5_cvm_region *reg;
-	bool found = false;
-
-	rte_rwlock_read_lock(&cvm_lock);
-	for (reg = cvm_regions; reg != NULL; reg = reg->next) {
-		uintptr_t start = (uintptr_t)reg->va;
-
-		if (a >= start && a < start + reg->len) {
-			if (fd != NULL)
-				*fd = reg->fd;
-			if (offset != NULL)
-				*offset = a - start;
-			if (base != NULL)
-				*base = reg->va;
-			if (len != NULL)
-				*len = reg->len;
-			found = true;
-			break;
+			c->size += n->size;
+			c->next = n->next;
+			rte_free(n);
 		}
+		/* 与前驱空闲块合并 */
+		if (prev != NULL && !prev->used) {
+			prev->size += c->size;
+			prev->next = c->next;
+			rte_free(c);
+		}
+		break;
 	}
-	rte_rwlock_read_unlock(&cvm_lock);
-	return found;
+	rte_rwlock_write_unlock(&cvm.lock);
 }
 
 RTE_EXPORT_INTERNAL_SYMBOL(mlx5_cvm_shared_contains)
 bool
 mlx5_cvm_shared_contains(const void *addr)
 {
-	return mlx5_cvm_shared_lookup(addr, NULL, NULL, NULL, NULL);
+	uintptr_t a = (uintptr_t)addr;
+	uintptr_t base = (uintptr_t)cvm.base;
+
+	if (!cvm.enabled || cvm.base == NULL)
+		return false;
+	return a >= base && a < base + cvm.len;
+}
+
+RTE_EXPORT_INTERNAL_SYMBOL(mlx5_cvm_shared_lookup)
+bool
+mlx5_cvm_shared_lookup(const void *addr, int *fd, size_t *offset)
+{
+	if (!mlx5_cvm_shared_contains(addr))
+		return false;
+	if (fd != NULL)
+		*fd = cvm.fd;
+	if (offset != NULL)
+		*offset = (uintptr_t)addr - (uintptr_t)cvm.base;
+	return true;
+}
+
+RTE_EXPORT_INTERNAL_SYMBOL(mlx5_cvm_shared_dma_map)
+int
+mlx5_cvm_shared_dma_map(struct rte_device *dev)
+{
+	int ret;
+
+	if (!cvm.enabled)
+		return 0;
+	/*
+	 * 预先建立 MR。数据面不能容忍 MR 缓存 miss —— miss 会退回现场
+	 * 注册，而共享区地址只有 dma-buf 一条路可走，那条退路是死的，
+	 * 且失败发生在收发包途中，表现为丢包或卡死。
+	 */
+	ret = rte_dev_dma_map(dev, cvm.base, (uint64_t)(uintptr_t)cvm.base,
+			      cvm.len);
+	if (ret != 0) {
+		DRV_LOG(ERR, "共享区 rte_dev_dma_map 失败: %s",
+			rte_strerror(rte_errno));
+		return ret;
+	}
+	DRV_LOG(INFO, "共享区 MR 已预填充（%zu 字节）", cvm.len);
+	return 0;
 }
