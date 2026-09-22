@@ -275,3 +275,49 @@ release: done
 
 16MB 详查：8 个不连续的 2MB 块，CPU 读写校验通过，
 `devx_umem_reg_ex` 成功。
+
+---
+
+## 里程碑：DPDK 在 CVM 内完成收发（2026-09-22）
+
+testpmd 在 SEV-SNP CVM 里跑通端到端数据面，全部 DMA 内存位于共享页。
+
+### 收包
+```
+rx_phy_packets: 12   rx_q0_packets: 12   Forward RX-packets: 12
+```
+账目吻合：ping 发 20，内核收 8，DPDK 抢走 12。
+
+### 收发往返（macswap）
+```
+Forward statistics: RX-packets: 13  TX-packets: 13  dropped: 0
+```
+
+### 字节级证据
+主机侧抓包，去程与回程逐字节对照：
+
+```
+偏移        去程(源 ...b8:64)           回程(源 ...b8:65)
+0x00-0x0b   605e65e3b865 605e65e3b864 | 605e65e3b864 605e65e3b865   MAC 对调
+0x0c 起     0800 4500 0054 7b60 ...   | 0800 4500 0054 7b60 ...     完全一致
+0x3a 起     4841 5245 444d 454d ...   | 4841 5245 444d 454d ...     载荷一致
+```
+
+从 0x0c 到帧尾全部相同：IP 头、ICMP 头、校验和 0x9967、时间戳、
+以及 CVMSHAREDMEM 重复填充的载荷。仅前 12 字节的两个 MAC 按
+macswap 语义对调。
+
+完整路径：
+```
+主机上线 → 网卡 DMA 写入共享页 → CPU 从共享页读出 → CPU 改写 MAC
+        → 网卡 DMA 读出共享页 → 上线 → 主机抓到
+```
+往返 144 微秒。
+
+### 运行方式
+```bash
+sudo insmod cvm_shared.ko
+dpdk-testpmd -l 0-3 -n 4 -a <bdf>,dv_flow_en=2 --iova-mode=va -- -i \
+    --mp-alloc=xbuf --forward-mode=macswap
+# 端口起来后需 set promisc 0 on
+```
