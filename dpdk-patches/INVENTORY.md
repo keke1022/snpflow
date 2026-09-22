@@ -161,3 +161,44 @@ verbs 路径，而 `ibv_create_cq` 在 SNP 下本就返回 EIO。
 因此内核模块提供 `CVM_SHARED_IOC_LOOKUP`：按虚拟地址反查归属，
 返回一个新的 dma-buf fd 与区内偏移。驱动在自己的表里查不到时
 回落到内核查询。
+
+---
+
+# PMD 内存安全（B 步，无条件执行）
+
+CQ 缓冲区位于共享页，宿主机可读可写。PMD 从中读出的若干字段被直接
+当作**索引或长度**使用，取值越界的后果是内存破坏，而不是收到坏包。
+
+这与 TOCTOU 是两回事：即便宿主机毫无恶意，一个出错的值也足以让 PMD
+越界访问。因此校验无条件进行，性能数字必须包含它。
+
+## 已加校验的点（非向量化路径）
+
+| 位置 | 字段 | 危险 | 处理 |
+|---|---|---|---|
+| `mlx5_rx.c` 压缩 CQE | `byte_cnt`（此处是 mini-CQE 个数） | 用于 `zip->cq_ci = cq_ci + cqe_cnt`，**无界推进索引** | 单次读入局部变量，校验 `0 < cnt <= CQ 元素数`，越界则计 idropped 并返回 |
+| `mlx5_rx.c` 压缩/非压缩 | `wqe_counter` | 用作 WQE 环索引 | 按 `(1 << elts_n) - 1` 取模 |
+| `mlx5_tx.c` | `last_cqe->wqe_counter` | 用作 TX WQE 环生产者索引 | 按 `txq->wqe_m` 取模 |
+
+`volatile` 已保证单次读取；缺的是读入之后的校验，本补丁补的就是这一层。
+
+## 尚未覆盖
+
+**向量化路径**（`mlx5_rxtx_vec_sse.h` / `_neon.h` / `_altivec.h`）里
+mini-CQE 与 byte_cnt 的处理是 SIMD 批量展开的，校验需要不同写法，
+另行处理。当前测试走的是标量路径。
+
+**MPRQ**（`mlx5_rx.c` 的 `strd_cnt` / stride 长度）同理，
+当前配置未启用 MPRQ。
+
+## 回归结果
+
+407 万包 macswap 往返：
+
+```
+RX-packets: 4,071,147   TX-packets: 4,071,147   TX-dropped: 0
+RX-dropped: 38          RX-errors: 0            RX-nombuf: 0
+```
+
+38 个丢弃占 0.00093%，是队列满的瞬时丢弃 —— 校验失败会计入
+`idropped` 并返回 0，与此不同。校验未误杀任何正常包。
