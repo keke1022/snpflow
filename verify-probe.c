@@ -1,5 +1,5 @@
 /*
- * verify-probe: cvm_shared 的四项补充验证。
+ * verify-probe: cvm_shared 的六项补充验证。
  *
  *  1. 跨映射校验 —— 用户态 mmap 写入、内核直接映射读出比对，再反向一次。
  *     C-bit 只要有一侧处理错了，两边看到的就不是同一份数据。
@@ -7,6 +7,8 @@
  *     作为「没碰 swiotlb」的直接证据（而不是只看 dmesg 有没有报错）。
  *  3. IOMMU 拦截 —— 确认 attach 阶段的检查不会误伤当前环境。
  *  4. close(fd) 先于 munmap —— 确认页不会被提前转回私有。
+ *  5. LOOKUP 生命周期 —— 覆盖偏移、新 fd、部分 munmap、fork 与失效地址。
+ *  6. SG 尾块边界 —— 非 2 的幂页数不得把高阶块尾部暴露给设备。
  */
 #define _GNU_SOURCE
 #include <errno.h>
@@ -20,6 +22,7 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include "kmod/cvm_shared.h"
@@ -113,6 +116,54 @@ static int cvm_xcheck(int fd, unsigned op, uint64_t off, uint64_t len,
 	close(dev);
 	if (out)
 		*out = req;
+	return ret;
+}
+
+static int cvm_lookup(const void *addr, struct cvm_shared_lookup *out)
+{
+	struct cvm_shared_lookup req;
+	int saved_errno;
+	int dev;
+	int ret;
+
+	memset(&req, 0, sizeof(req));
+	req.va = (uintptr_t)addr;
+	req.fd = -1;
+	dev = open(CVM_SHARED_DEV, O_RDWR);
+	if (dev < 0)
+		return -1;
+	ret = ioctl(dev, CVM_SHARED_IOC_LOOKUP, &req);
+	saved_errno = errno;
+	close(dev);
+	errno = saved_errno;
+	if (out)
+		*out = req;
+	else if (ret == 0)
+		close(req.fd);
+	return ret;
+}
+
+static int cvm_layout(int fd, struct cvm_shared_chunk *chunks,
+		      unsigned int max_chunks, unsigned int *nr_chunks)
+{
+	struct cvm_shared_layout req;
+	int saved_errno;
+	int dev;
+	int ret;
+
+	memset(&req, 0, sizeof(req));
+	req.fd = fd;
+	req.chunks = (uintptr_t)chunks;
+	req.max_chunks = max_chunks;
+	dev = open(CVM_SHARED_DEV, O_RDWR);
+	if (dev < 0)
+		return -1;
+	ret = ioctl(dev, CVM_SHARED_IOC_LAYOUT, &req);
+	saved_errno = errno;
+	close(dev);
+	errno = saved_errno;
+	if (nr_chunks)
+		*nr_chunks = req.nr_chunks;
 	return ret;
 }
 
@@ -345,6 +396,171 @@ skip3:
 		info("已 munmap —— release 应当出现在这两条标记之间");
 	}
 skip4:
+
+	/* ============================================================ */
+	printf("\n=== [5] LOOKUP 映射生命周期 ===\n");
+	{
+		const size_t page = (size_t)sysconf(_SC_PAGESIZE);
+		const size_t map_len = 4 * page;
+		struct cvm_shared_lookup lookup;
+		unsigned char *p;
+		unsigned char *q;
+		pid_t child;
+		int status;
+		int fd;
+
+		fd = cvm_alloc(map_len);
+		if (fd < 0) {
+			bad("分配失败");
+			goto skip5;
+		}
+		p = mmap(NULL, map_len, PROT_READ | PROT_WRITE,
+			 MAP_SHARED, fd, 0);
+		if (p == MAP_FAILED) {
+			bad("mmap");
+			close(fd);
+			goto skip5;
+		}
+		/* 后续只由 VMA 持有原 dma-buf，LOOKUP 必须自己取得新引用。 */
+		close(fd);
+
+		p[page + 123] = 0x5a;
+		if (cvm_lookup(p + page + 123, &lookup) < 0) {
+			bad("映射内地址 LOOKUP");
+			goto unmap_all5;
+		}
+		if (lookup.fd < 0 || lookup.offset != page + 123 ||
+		    lookup.len != map_len) {
+			bad("LOOKUP 返回值错误: fd=%d offset=%llu len=%llu",
+			    lookup.fd, (unsigned long long)lookup.offset,
+			    (unsigned long long)lookup.len);
+			if (lookup.fd >= 0)
+				close(lookup.fd);
+			goto unmap_all5;
+		}
+		q = mmap(NULL, map_len, PROT_READ | PROT_WRITE,
+			 MAP_SHARED, lookup.fd, 0);
+		if (q == MAP_FAILED) {
+			bad("返回 fd 的 mmap");
+			close(lookup.fd);
+			goto unmap_all5;
+		}
+		if (q[page + 123] != 0x5a)
+			bad("返回 fd 未指向同一缓冲区");
+		else
+			ok("LOOKUP 返回独立 fd、总长度与精确区内偏移");
+		munmap(q, map_len);
+		close(lookup.fd);
+
+		/* 删除前缀后，内核会调整剩余 VMA 的 vm_pgoff。 */
+		if (munmap(p, page) < 0) {
+			bad("部分 munmap");
+			goto unmap_tail5;
+		}
+		errno = 0;
+		if (cvm_lookup(p, &lookup) == 0) {
+			bad("已解除映射的前缀仍被 LOOKUP 接受");
+			close(lookup.fd);
+		} else if (errno != ENOENT) {
+			bad("已解除映射的前缀返回非预期错误");
+		} else {
+			ok("部分 munmap 后，旧前缀地址立即失效");
+		}
+
+		if (cvm_lookup(p + page + 17, &lookup) < 0) {
+			bad("剩余 VMA 的 LOOKUP");
+		} else {
+			if (lookup.offset != page + 17)
+				bad("VMA 分裂后的偏移错误: got=%llu want=%zu",
+				    (unsigned long long)lookup.offset, page + 17);
+			else
+				ok("VMA 分裂后按 vm_pgoff 得到正确原始偏移");
+			close(lookup.fd);
+		}
+
+		/* fork 后是另一个 mm；旧的全局映射表会在这里误判为未找到。 */
+		child = fork();
+		if (child < 0) {
+			bad("fork");
+		} else if (child == 0) {
+			struct cvm_shared_lookup child_lookup;
+			int rc = 1;
+
+			if (cvm_lookup(p + 2 * page + 29, &child_lookup) == 0) {
+				rc = child_lookup.offset == 2 * page + 29 ? 0 : 2;
+				close(child_lookup.fd);
+			}
+			_exit(rc);
+		} else if (waitpid(child, &status, 0) != child) {
+			bad("waitpid");
+		} else if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+			bad("子进程对继承 VMA 的 LOOKUP 失败 (status=%d)", status);
+		} else {
+			ok("fork 后子进程可查询继承的 VMA");
+		}
+
+unmap_tail5:
+		if (munmap(p + page, map_len - page) < 0)
+			bad("解除剩余映射");
+		errno = 0;
+		if (cvm_lookup(p + page, &lookup) == 0) {
+			bad("完全 munmap 后旧地址仍被 LOOKUP 接受");
+			close(lookup.fd);
+		} else if (errno != ENOENT) {
+			bad("完全 munmap 后返回非预期错误");
+		} else {
+			ok("完全 munmap 后旧地址失效，无 stale mapping");
+		}
+		goto skip5;
+
+unmap_all5:
+		munmap(p, map_len);
+	}
+skip5:
+
+	/* ============================================================ */
+	printf("\n=== [6] SG 尾块声明边界 ===\n");
+	{
+		const size_t page = (size_t)sysconf(_SC_PAGESIZE);
+		const size_t odd_len = 3 * page;
+		struct cvm_shared_chunk chunks[8];
+		const unsigned int chunk_cap = sizeof(chunks) / sizeof(chunks[0]);
+		unsigned int nr_chunks = 0;
+		uint64_t total = 0;
+		int fd;
+
+		fd = cvm_alloc(odd_len);
+		if (fd < 0) {
+			bad("分配 3 页缓冲区失败");
+			goto skip6;
+		}
+		memset(chunks, 0, sizeof(chunks));
+		if (cvm_layout(fd, chunks, chunk_cap, &nr_chunks) < 0) {
+			bad("LAYOUT 查询失败");
+			close(fd);
+			goto skip6;
+		}
+		if (nr_chunks == 0 || nr_chunks > chunk_cap) {
+			bad("LAYOUT 块数异常: %u", nr_chunks);
+			close(fd);
+			goto skip6;
+		}
+		for (unsigned int i = 0; i < nr_chunks; i++) {
+			if (chunks[i].len == 0 || chunks[i].len % page != 0) {
+				bad("块 %u 的有效长度异常: %llu", i,
+				    (unsigned long long)chunks[i].len);
+				break;
+			}
+			total += chunks[i].len;
+		}
+		if (total != odd_len)
+			bad("SG 声明总长越界: got=%llu want=%zu",
+			    (unsigned long long)total, odd_len);
+		else
+			ok("3 页请求的 SG/LAYOUT 总长精确为 3 页，无高阶块尾部越界");
+		close(fd);
+	}
+skip6:
 
 	printf("\n==================== 小结 ====================\n");
 	printf("失败项: %d\n", fails);

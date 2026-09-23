@@ -44,8 +44,7 @@
 #include <linux/capability.h>
 #include <linux/sizes.h>
 #include <linux/iommu.h>
-#include <linux/list.h>
-#include <linux/mutex.h>
+#include <linux/overflow.h>
 
 #include "cvm_shared.h"
 
@@ -59,24 +58,8 @@
 struct cvm_chunk {
 	struct page *page;
 	unsigned int order;
+	size_t len;                 /* 对外有效长度；分配块本身可能更大 */
 };
-
-/*
- * 映射登记：记录每个 mmap 出来的区间属于哪块缓冲区。
- *
- * 驱动与应用可能各自申请共享内存，任何一方都无法掌握全部区间，
- * 但内核知道全部映射。LOOKUP ioctl 据此按虚拟地址反查归属。
- */
-struct cvm_mapping {
-	struct mm_struct *mm;
-	unsigned long start;
-	unsigned long end;
-	struct cvm_buffer *buf;
-	struct list_head node;
-};
-
-static LIST_HEAD(cvm_mappings);
-static DEFINE_MUTEX(cvm_mappings_lock);
 
 struct cvm_buffer {
 	size_t size;                /* 对齐后的总字节数 */
@@ -86,6 +69,12 @@ struct cvm_buffer {
 	bool decrypted;
 	struct dma_buf *dmabuf;
 };
+
+/*
+ * LOOKUP 通过当前进程的 VMA 识别本模块创建的映射。空的 vm_ops 只作
+ * 类型标签；VMA 自身通过 vm_file 持有 dma-buf 引用。
+ */
+static const struct vm_operations_struct cvm_vm_ops;
 
 /* ------------------------------------------------------------------ */
 /* 页分配与加解密转换                                                  */
@@ -135,12 +124,10 @@ static int cvm_alloc_chunks(struct cvm_buffer *buf, size_t size)
 
 		buf->chunks[n].page = page;
 		buf->chunks[n].order = order;
+		buf->chunks[n].len = min_t(size_t, remaining,
+					       PAGE_SIZE << order);
 		n++;
-
-		if ((PAGE_SIZE << order) >= remaining)
-			remaining = 0;
-		else
-			remaining -= PAGE_SIZE << order;
+		remaining -= buf->chunks[n - 1].len;
 	}
 
 	buf->nr_chunks = n;
@@ -235,7 +222,7 @@ static int cvm_build_sgt(struct cvm_buffer *buf)
 
 	sg = buf->sgt.sgl;
 	for (i = 0; i < buf->nr_chunks; i++) {
-		unsigned int len = PAGE_SIZE << buf->chunks[i].order;
+		size_t len = buf->chunks[i].len;
 
 		sg_set_page(sg, buf->chunks[i].page, len, 0);
 
@@ -346,6 +333,8 @@ static int cvm_mmap(struct dma_buf *dmabuf, struct vm_area_struct *vma)
 		return -EINVAL;
 	if (vma->vm_end - vma->vm_start > buf->size)
 		return -EINVAL;
+	vma->vm_ops = &cvm_vm_ops;
+	vma->vm_private_data = buf;
 
 	/*
 	 * 用户态映射也必须清掉 C-bit，否则 CPU 通过这个映射读到的是把
@@ -355,7 +344,7 @@ static int cvm_mmap(struct dma_buf *dmabuf, struct vm_area_struct *vma)
 	vma->vm_page_prot = pgprot_decrypted(vma->vm_page_prot);
 
 	for (i = 0; i < buf->nr_chunks && addr < vma->vm_end; i++) {
-		unsigned long len = PAGE_SIZE << buf->chunks[i].order;
+		unsigned long len = buf->chunks[i].len;
 		int ret;
 
 		if (addr + len > vma->vm_end)
@@ -368,21 +357,6 @@ static int cvm_mmap(struct dma_buf *dmabuf, struct vm_area_struct *vma)
 			return ret;
 
 		addr += len;
-	}
-
-	/* 登记本次映射，供 LOOKUP 反查 */
-	{
-		struct cvm_mapping *m = kzalloc(sizeof(*m), GFP_KERNEL);
-
-		if (m == NULL)
-			return -ENOMEM;
-		m->mm = vma->vm_mm;
-		m->start = vma->vm_start;
-		m->end = vma->vm_end;
-		m->buf = buf;
-		mutex_lock(&cvm_mappings_lock);
-		list_add(&m->node, &cvm_mappings);
-		mutex_unlock(&cvm_mappings_lock);
 	}
 
 	return 0;
@@ -402,20 +376,6 @@ static void cvm_release(struct dma_buf *dmabuf)
 	 */
 	pr_info("release: refcount dropped to zero, converting %zu bytes back to private\n",
 		buf->size);
-
-	/* 清掉本缓冲区的映射登记 */
-	{
-		struct cvm_mapping *m, *tmp;
-
-		mutex_lock(&cvm_mappings_lock);
-		list_for_each_entry_safe(m, tmp, &cvm_mappings, node) {
-			if (m->buf == buf) {
-				list_del(&m->node);
-				kfree(m);
-			}
-		}
-		mutex_unlock(&cvm_mappings_lock);
-	}
 
 	sg_free_table(&buf->sgt);
 	cvm_set_encrypted(buf);
@@ -544,7 +504,7 @@ static int cvm_do_layout(struct cvm_shared_layout *req)
 		for (i = 0; i < n; i++) {
 			struct cvm_shared_chunk c = {
 				.phys = page_to_phys(buf->chunks[i].page),
-				.len  = PAGE_SIZE << buf->chunks[i].order,
+				.len  = buf->chunks[i].len,
 			};
 
 			if (copy_to_user(&uchunks[i], &c, sizeof(c))) {
@@ -606,7 +566,7 @@ static int cvm_do_xcheck(struct cvm_shared_xcheck *req)
 
 	/* 定位到起始块 */
 	for (i = 0; i < buf->nr_chunks && off < end; i++) {
-		u64 chunk_len = PAGE_SIZE << buf->chunks[i].order;
+		u64 chunk_len = buf->chunks[i].len;
 		u64 chunk_start = 0, k;
 		u64 *kaddr;
 
@@ -614,7 +574,7 @@ static int cvm_do_xcheck(struct cvm_shared_xcheck *req)
 		{
 			unsigned int j;
 			for (j = 0; j < i; j++)
-				chunk_start += PAGE_SIZE << buf->chunks[j].order;
+				chunk_start += buf->chunks[j].len;
 		}
 
 		if (off >= chunk_start + chunk_len)
@@ -662,37 +622,51 @@ out:
  */
 static int cvm_do_lookup(struct cvm_shared_lookup *req, struct dma_buf **out)
 {
-	struct cvm_mapping *m;
-	struct cvm_buffer *buf = NULL;
+	struct vm_area_struct *vma;
+	struct cvm_buffer *buf;
+	struct dma_buf *dmabuf;
 	unsigned long va = (unsigned long)req->va;
-	unsigned long start = 0;
+	u64 map_offset, offset;
+	int ret = -ENOENT;
 	int fd;
 
 	req->fd = -1;
+	mmap_read_lock(current->mm);
+	vma = find_vma(current->mm, va);
+	if (!vma || va < vma->vm_start ||
+	    vma->vm_ops != &cvm_vm_ops || !vma->vm_private_data)
+		goto out_unlock;
 
-	mutex_lock(&cvm_mappings_lock);
-	list_for_each_entry(m, &cvm_mappings, node) {
-		if (m->mm == current->mm && va >= m->start && va < m->end) {
-			buf = m->buf;
-			start = m->start;
-			break;
-		}
+	buf = vma->vm_private_data;
+	dmabuf = buf->dmabuf;
+	/* vm_file pins buf; matching both fields prevents accepting another VMA. */
+	if (!dmabuf || vma->vm_file != dmabuf->file)
+		goto out_unlock;
+	if (check_shl_overflow((u64)vma->vm_pgoff, PAGE_SHIFT, &map_offset) ||
+	    check_add_overflow(map_offset, (u64)(va - vma->vm_start), &offset) ||
+	    offset >= buf->size) {
+		ret = -EOVERFLOW;
+		goto out_unlock;
 	}
-	mutex_unlock(&cvm_mappings_lock);
-
-	if (buf == NULL)
-		return -ENOENT;
+	/* Pin before dropping mmap_lock; fd_install will consume this reference. */
+	get_dma_buf(dmabuf);
+	req->offset = offset;
+	req->len = buf->size;
+	mmap_read_unlock(current->mm);
 
 	fd = get_unused_fd_flags(O_CLOEXEC);
-	if (fd < 0)
+	if (fd < 0) {
+		dma_buf_put(dmabuf);
 		return fd;
-	get_dma_buf(buf->dmabuf);   /* 新 fd 会持有一份引用 */
+	}
 
 	req->fd = fd;
-	*out = buf->dmabuf;
-	req->offset = va - start;
-	req->len = buf->size;
+	*out = dmabuf;
 	return 0;
+
+out_unlock:
+	mmap_read_unlock(current->mm);
+	return ret;
 }
 
 static long cvm_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
