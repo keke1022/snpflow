@@ -321,3 +321,49 @@ dpdk-testpmd -l 0-3 -n 4 -a <bdf>,dv_flow_en=2 --iova-mode=va -- -i \
     --mp-alloc=xbuf --forward-mode=macswap
 # 端口起来后需 set promisc 0 on
 ```
+
+---
+
+## 当前保守基线（2026-09-23）
+
+本文前面的里程碑和 `dpdk-patches/INVENTORY.md` 记录了探索过程，其中
+“TX counter 取模”“向量路径待补”等描述不是当前实现。当前实现以
+“缩小支持面 + fail-stop”为准：
+
+- CVM 严格模式只允许标量 SPRQ；关闭 CQE compression、向量 RX 和 MPRQ，
+  拒绝 scatter、LRO、shared RxQ。未支持的配置在控制面明确失败。
+- 标量 RX 在推进索引或读取 mini-CQE 前校验 CQE；非法值不消费、不猜测
+  压缩布局，队列 fail-stop，显式 stop/start 后才恢复。
+- TX 的私有 `fcqs` 为每个软件请求记录精确 WQE counter。CVM 模式只接受
+  与该记录完全一致的 CQE；没有待完成请求或 counter 不一致即 fail-stop。
+  不再对不可信 counter 做掩码或仅凭滚动区间猜测。
+- `CVM_SHARED_IOC_LOOKUP` 不再维护复制出来的全局映射表；它在调用者当前
+  `mmap_read_lock` 下检查实时 VMA，并在解锁前取得 dma-buf 引用，因而自然
+  跟随 `munmap`、VMA 分裂与 `fork`。
+- LOOKUP fd 的所有权统一为“返回新 fd，调用者关闭”；两个 DevX 注册点在
+  调用后立即关闭，并保留注册失败的 `errno`。
+- SG 最后一块只对外声明申请范围内的有效长度；高阶页块多分配的尾部不再
+  出现在 SG、LAYOUT、mmap 或 XCHECK 逻辑长度中。
+- testpmd 只有在 `/dev/cvm_shared` 明确不存在时才允许普通内存 fallback；
+  设备存在但 open/ALLOC/mmap/extmem 失败时直接终止。
+
+对应提交：内核仓库 `995cdf5`；CVM DPDK 分支 `d11e724`、`8faa9e8`、
+`db92d29`、`3d5d319`、`88fb37b`、`e228872`。
+
+### 当前验证结果
+
+- `verify-probe` 六项全过：双向 C-bit 映射、swiotlb 零变化、IOMMU 检查、
+  close-before-munmap、LOOKUP 生命周期、3 页 SG 尾界。
+- 普通与 `-Dtests=true` 两套 DPDK 构建通过；RX/TX 隔离边界测试均通过。
+- testpmd 连续 10 次端口 stop/start：fd 数 `45 -> 45`；关闭应用初始
+  dma-buf fd 后为 44，继续重启仍为 44。
+- `txonly` 两轮（中间端口 stop/start）累计 1,237,067,136 包，TX errors 0，
+  未触发 fail-stop。
+- 最终 macswap 回归：RX 950、TX 950，missed/errors/nombuf/dropped 均为 0。
+- 申请 1,090,387,968 字节（超过内核单次 1GB 上限）时 testpmd 明确退出，
+  没有回退到私有 memzone。
+
+仍需明确：目前没有能把伪造 CQE 注入真实 mlx5 CQ 的端到端框架。非法值
+判断和状态转换由隔离单元测试覆盖，正常 CQE 热路径由真实流量覆盖；不能把
+后者表述为“已验证恶意 CQE 注入”。向量 RX、MPRQ、scatter 等也是明确拒绝，
+不是已覆盖。
