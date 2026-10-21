@@ -26,9 +26,36 @@ memory; `cvmchunk` authenticates data before committing it to an object.
 
 ![DPDK/mlx5 RX DMA flow: blue arrows show CPU accesses; orange arrows show NIC DMA.](docs/figures/rx-dma-datapath.png)
 
-*Underlying RX DMA flow: blue = CPU access, orange = NIC DMA. SNPFlow places
-these DMA resources in shared guest memory; the private-buffer bridge and
-`cvmchunk` authentication described above are not shown.*
+*Simplified mlx5 RX flow for scalar SPRQ with CQE compression disabled.
+Blue = CPU access; orange = NIC DMA.*
+
+The CPU posts receive buffers through WQEs and updates the RQ doorbell record
+(1–2). The NIC reads those requests, writes packet data and reports completion
+(3–5); the CPU polls the CQ (6). SNPFlow places these DMA resources in shared
+guest memory, then validates private CQE snapshots and copies packets into
+private buffers. The private bridge and `cvmchunk` authentication are not shown.
+
+<details>
+<summary>How to read the diagram: scope and simplifications</summary>
+
+- The four memory blocks cover the illustrated RX path, not every NIC DMA
+  resource. TX and CQ consumer updates are omitted. “No interrupts” describes
+  packet polling here, not all device events.
+- The RQ doorbell record holds the posted-WQE producer counter. Together with
+  its consumption progress, the NIC determines available receive requests;
+  this is not the mempool's free-buffer count. Posting to this RQ requires a
+  record update, not a per-packet MMIO write to the pictured NIC register.
+- One CQE per successfully received packet describes the uncompressed path.
+  The drawing uses 64-byte CQEs and example buffer/packet sizes; timestamps
+  require the corresponding configuration.
+- An `lkey` identifies a registered memory region. Address translation also
+  uses the requested address and length, with bounds and permission checks;
+  `lkey` alone is not a physical address.
+
+See the [mlx5 driver guide](https://doc.dpdk.org/guides-25.11/nics/mlx5.html)
+and [hardware programming manual, §§6.1 and 7.4](https://network.nvidia.com/files/doc-2020/ethernet-adapters-programming-manual.pdf).
+
+</details>
 
 ## Get started
 
