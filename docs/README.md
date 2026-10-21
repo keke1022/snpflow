@@ -16,6 +16,7 @@ supersede their open questions.
 | [2026-09-30 CUDA probe](../scratch/cuda-import-probe/README.md) | GPU made ready; direct import rejected; protected 64-byte H2D copy passed |
 | [2026-10-20 repository validation](VALIDATION-2026-10-20-repository.md) | Read-only recovery, complete patch-series equivalence, portable test results |
 | [2026-10-20 correctness and coverage](VALIDATION-2026-10-20-feature-coverage.md) | CQE mutation fixes, 48 production-code tests, forwarding/GSO hardware matrix, authenticated reruns, official-release baseline |
+| [2026-10-21 upstream test audit](VALIDATION-2026-10-21-upstream-tests.md) | DPDK's original tests, pristine-release failure comparisons, SNP hugepage reruns, and build/driver limitations |
 | [Kernel issues and history](../kmod/ISSUES.md) | Allocation and lifetime behavior, design constraints, known gaps |
 
 ## Runnable experiments

@@ -159,6 +159,10 @@ enabled. See the [DPDK test guide](tests/dpdk/README.md). A separate GitHub
 Actions workflow builds the verified official release and runs these tests
 with and without ASan/UBSan.
 
+The [upstream test audit](docs/VALIDATION-2026-10-21-upstream-tests.md) separately
+records DPDK's original test results and remaining failures. Passing the
+SNPFlow integration CI does not mean the entire upstream suite passes.
+
 For the complete data path, follow:
 
 1. [DPDK patch series and exact baselines](patches/README.md).

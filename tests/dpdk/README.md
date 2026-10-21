@@ -5,6 +5,11 @@ kernel module, hugepages, root privileges, or SNP guest. They use actual DPDK
 mbufs, pools and forwarding functions; they do not model the PMD in a separate
 implementation.
 
+These are SNPFlow regressions, not the complete original DPDK test suite.
+The separate [upstream test audit](../../docs/VALIDATION-2026-10-21-upstream-tests.md)
+records the original suite's passes, skips and failures, including comparisons
+against the unmodified release and supplemental SNP hugepage runs.
+
 Apply the [complete patch series](../../patches/README.md), then build:
 
 ```sh

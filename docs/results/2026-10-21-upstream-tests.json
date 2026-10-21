@@ -1,0 +1,6944 @@
+{
+  "date_local": "2026-10-21 America/Los_Angeles",
+  "repository_revision": "4ba7b89da938320c1b9678b517f021ac288ded17",
+  "patched_source_tree": "bc671f0bfef8c50f2934d3002b76afe68397ccf4",
+  "pristine_release_sha256": "3719acc586b310c4f60ba230683bf4f1e12c6f2f5bee11f7c01b1bbd0ded7490",
+  "host": {
+    "kernel": "6.17.0-35-generic",
+    "compiler": "GCC 15.2.0",
+    "rdma_core": "56.1",
+    "numa_nodes": 2,
+    "memory_mib": 2048,
+    "hugepages": false,
+    "meson_lcores": "0-7",
+    "supplemental_lcores": "8-15"
+  },
+  "guest": {
+    "kernel": "7.0.0-34-generic",
+    "snp": true,
+    "vcpus": 8,
+    "ram_gib": 16,
+    "numa_nodes": 1,
+    "rdma_core": "61.0",
+    "existing_hugepages_2mib": 1024,
+    "memory_mib": 1024,
+    "shutdown_restored": true
+  },
+  "counts": {
+    "host": {
+      "PASS": 161,
+      "SKIP": 60,
+      "FAIL": 25
+    },
+    "host_suites": {
+      "debug-tests": {
+        "PASS": 9
+      },
+      "driver-tests": {
+        "FAIL": 2,
+        "SKIP": 45
+      },
+      "fast-tests": {
+        "PASS": 79,
+        "SKIP": 4
+      },
+      "perf-tests": {
+        "PASS": 39,
+        "FAIL": 7,
+        "SKIP": 1
+      },
+      "stress-tests": {
+        "PASS": 2
+      },
+      "supplemental": {
+        "PASS": 30,
+        "SKIP": 4,
+        "FAIL": 10
+      },
+      "ungrouped": {
+        "SKIP": 6,
+        "FAIL": 6,
+        "PASS": 2
+      }
+    },
+    "guest_huge": {
+      "PASS": 42,
+      "SKIP": 3,
+      "FAIL": 3
+    },
+    "software_profile": {
+      "PASS": 18,
+      "FAIL": 2
+    }
+  },
+  "host_results": [
+    {
+      "name": "acl_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 2.094,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=acl_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "alarm_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 1.174,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=alarm_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "argparse_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.164,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=argparse_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "bitcount_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.161,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=bitcount_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "bitmap_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.16,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=bitmap_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "bitops_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 1.661,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=bitops_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "bitset_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.95,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=bitset_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "bitratestats_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.172,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=bitratestats_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "bpf_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.163,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=bpf_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "bpf_elf_autotest",
+      "suite": "fast-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.16,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=bpf_elf_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "bpf_convert_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.166,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=bpf_convert_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "byteorder_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.162,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=byteorder_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "cfgfile_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.163,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=cfgfile_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "cksum_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.163,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=cksum_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "cmdline_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.16,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=cmdline_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "common_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.35,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=common_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "cpuflags_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.161,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=cpuflags_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "crc_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.163,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=crc_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "user_delay_us",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.162,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=user_delay_us",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "debug_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 2.404,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=debug_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "devargs_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.161,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=devargs_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "eal_fs_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.161,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=eal_fs_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "errno_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.161,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=errno_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "ethdev_link_status",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.164,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=ethdev_link_status",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "event_ring_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.162,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=event_ring_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "eventdev_common_autotest",
+      "suite": "fast-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.163,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=eventdev_common_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "eventdev_selftest_sw",
+      "suite": "fast-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.163,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=eventdev_selftest_sw",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "fbarray_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.163,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=fbarray_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "fib_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.506,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=fib_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "fib6_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.515,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=fib6_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "graph_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.161,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=graph_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "node_list_dump",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.159,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=node_list_dump",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "graph_feature_arc_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.159,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=graph_feature_arc_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "hash_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.277,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=hash_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "interrupt_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 1.46,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=interrupt_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "ipsec_autotest",
+      "suite": "fast-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.156,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=ipsec_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "kvargs_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.157,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=kvargs_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "latencystats_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.161,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=latencystats_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "lcore_var_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.291,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=lcore_var_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "lcores_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.17,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=lcores_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "logs_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.161,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=logs_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "lpm_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.672,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=lpm_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "lpm6_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 1.666,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=lpm6_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "member_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.665,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=member_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "memcpy_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.217,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=memcpy_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "meter_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.16,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=meter_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "metrics_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.16,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=metrics_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "net_ether_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.368,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=net_ether_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "net_ipv6_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.155,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=net_ipv6_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "pdump_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.246,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=pdump_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "per_lcore_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.261,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=per_lcore_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "pflock_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.905,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=pflock_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "pie_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.168,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=pie_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "ring_pmd_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.166,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=ring_pmd_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "prefetch_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.162,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=prefetch_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "ptr_compress_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.16,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=ptr_compress_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "rcu_qsbr_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.237,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=rcu_qsbr_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "reorder_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.29,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=reorder_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "rib_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 2.371,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=rib_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "rib6_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 2.393,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=rib6_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "ring_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.178,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=ring_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "rwlock_test1_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.884,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=rwlock_test1_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "rwlock_rda_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 5.163,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=rwlock_rda_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "rwlock_rds_wrm_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 5.163,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=rwlock_rds_wrm_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "rwlock_rde_wro_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 5.166,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=rwlock_rde_wro_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "sched_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.17,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=sched_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "seqlock_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 2.166,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=seqlock_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "service_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 2.861,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=service_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "soring_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.165,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=soring_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "spinlock_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.242,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=spinlock_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "string_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.155,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=string_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "table_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 4.671,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=table_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "tailq_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.159,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=tailq_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "telemetry_data_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.164,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=telemetry_data_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "telemetry_json_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.165,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=telemetry_json_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "thash_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.173,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=thash_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "threads_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.233,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=threads_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "ticketlock_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.263,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=ticketlock_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "trace_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.167,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=trace_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "trace_autotest_with_traces",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.176,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--trace=.*",
+        "--trace-dir=/tmp/snpflow-dpdk-build/app/test/suites",
+        "--file-prefix=trace_autotest_with_traces",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "vdev_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.164,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=vdev_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "version_autotest",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.163,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=version_autotest",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "telemetry_all",
+      "suite": "fast-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 9.311,
+      "command": [
+        "/tmp/snpflow-dpdk-work/app/test/suites/test_telemetry.sh",
+        "app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--vdev=net_null0",
+        "-a",
+        "0000:00:00.0",
+        "-l",
+        "0-7",
+        "--no-pci"
+      ],
+      "log": "native-fast-20261021.json"
+    },
+    {
+      "name": "cryptodev_scheduler_autotest",
+      "suite": "driver-tests",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration_seconds": 0.155,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json",
+      "pristine_result": "FAIL",
+      "classification": "Meson lists command absent from binary because crypto_scheduler driver disabled"
+    },
+    {
+      "name": "cryptodev_cn10k_raw_api_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.159,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_dpaa2_sec_raw_api_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.158,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_dpaa_sec_raw_api_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.159,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_qat_raw_api_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.158,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_qat_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.154,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_aesni_mb_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.159,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_cpu_aesni_mb_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.158,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_chacha_poly_mb_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.158,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_openssl_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.158,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_aesni_gcm_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.162,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_cpu_aesni_gcm_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.155,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_mlx5_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.159,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_null_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.159,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_sw_snow3g_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.158,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_sw_kasumi_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.158,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_sw_zuc_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.157,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_sw_armv8_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.157,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_sw_mvsam_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.158,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_dpaa2_sec_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.157,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_dpaa_sec_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.157,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_ccp_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.158,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_uadk_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.158,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_virtio_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.157,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_virtio_user_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.157,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_octeontx_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.158,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_caam_jr_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.159,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_nitrox_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.156,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_bcmfs_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.158,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_cn9k_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.159,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_cn10k_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.157,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_zsda_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.158,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_openssl_asym_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.159,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_qat_asym_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.157,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_octeontx_asym_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.157,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_cn9k_asym_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.154,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_cn10k_asym_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.158,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_virtio_asym_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.158,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_virtio_user_asym_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.158,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "dmadev_autotest",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.158,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "event_dma_adapter_autotest",
+      "suite": "driver-tests",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration_seconds": 0.157,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json",
+      "pristine_result": "FAIL",
+      "classification": "required event/software device unavailable in this build"
+    },
+    {
+      "name": "eventdev_selftest_octeontx",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.157,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "eventdev_selftest_dpaa2",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.157,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "eventdev_selftest_dlb2",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.158,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "eventdev_selftest_cn9k",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.159,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "eventdev_selftest_cn10k",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.158,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "eventdev_selftest_cn20k",
+      "suite": "driver-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.156,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "cryptodev_crosscheck",
+      "suite": "ungrouped",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.159,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "ethdev_api",
+      "suite": "ungrouped",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.156,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "event_crypto_adapter_autotest",
+      "suite": "ungrouped",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration_seconds": 0.161,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json",
+      "pristine_result": "FAIL",
+      "classification": "required event/software device unavailable in this build"
+    },
+    {
+      "name": "event_eth_rx_adapter_autotest",
+      "suite": "ungrouped",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration_seconds": 0.157,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json",
+      "pristine_result": "FAIL",
+      "classification": "required event/software device unavailable in this build"
+    },
+    {
+      "name": "event_eth_rx_intr_adapter_autotest",
+      "suite": "ungrouped",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration_seconds": 0.154,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json",
+      "pristine_result": "FAIL",
+      "classification": "required event/software device unavailable in this build"
+    },
+    {
+      "name": "event_timer_adapter_test",
+      "suite": "ungrouped",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration_seconds": 0.158,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json",
+      "pristine_result": "FAIL",
+      "classification": "required event/software device unavailable in this build"
+    },
+    {
+      "name": "external_mem_autotest",
+      "suite": "ungrouped",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration_seconds": 0.162,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json",
+      "pristine_result": "FAIL",
+      "classification": "passes in SNP guest with hugepages; ordinary-memory host configuration fails"
+    },
+    {
+      "name": "ipsec_sad_autotest",
+      "suite": "ungrouped",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.203,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "red_autotest",
+      "suite": "ungrouped",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.574,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "inline_macsec_autotest",
+      "suite": "ungrouped",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.154,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "inline_ipsec_autotest",
+      "suite": "ungrouped",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.159,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "inline_ipsec_sg_autotest",
+      "suite": "ungrouped",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.159,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "event_inline_ipsec_autotest",
+      "suite": "ungrouped",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.159,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "timer_secondary_autotest",
+      "suite": "ungrouped",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration_seconds": 2.229,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json",
+      "pristine_result": "FAIL",
+      "classification": "passes in SNP guest with hugepages; ordinary-memory host configuration fails"
+    },
+    {
+      "name": "dump_devargs",
+      "suite": "debug-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.156,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "dump_log_types",
+      "suite": "debug-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.158,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "dump_malloc_heaps",
+      "suite": "debug-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.158,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "dump_malloc_stats",
+      "suite": "debug-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.158,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "dump_mempool",
+      "suite": "debug-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.158,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "dump_memzone",
+      "suite": "debug-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.158,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "dump_physmem",
+      "suite": "debug-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.783,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "dump_ring",
+      "suite": "debug-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.163,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "dump_struct_sizes",
+      "suite": "debug-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.163,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-other-20261021.json"
+    },
+    {
+      "name": "barrier_autotest",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 16.009,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "cksum_perf_autotest",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 2.204,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "distributor_perf_autotest",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 15.269,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "efd_autotest",
+      "suite": "perf-tests",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration_seconds": 0.274,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json",
+      "pristine_result": "FAIL",
+      "classification": "generic build selects uncompiled AVX2 EFD implementation; reproduced upstream"
+    },
+    {
+      "name": "efd_perf_autotest",
+      "suite": "perf-tests",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration_seconds": 0.819,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json",
+      "pristine_result": "FAIL",
+      "classification": "generic build selects uncompiled AVX2 EFD implementation; reproduced upstream"
+    },
+    {
+      "name": "fib_slow_autotest",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.54,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "fib6_slow_autotest",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.523,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "fib6_perf_autotest",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 2.234,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "fib_perf_autotest",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 2.395,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "graph_perf_autotest",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 9.256,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "hash_functions_autotest",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 4.657,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "hash_multiwriter_autotest",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 2.759,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "hash_perf_autotest",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 105.866,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "hash_readwrite_perf_autotest",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 7.424,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "hash_readwrite_lf_perf_autotest",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 79.465,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "ipsec_perf_autotest",
+      "suite": "perf-tests",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration_seconds": 0.16,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "lcore_var_perf_autotest",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 1.207,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "lpm6_perf_autotest",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 2.517,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "lpm_perf_autotest",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 154.742,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "malloc_perf_autotest",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 7.61,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "member_perf_autotest",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 21.793,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "memcpy_perf_autotest",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 246.125,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "mempool_perf_autotest",
+      "suite": "perf-tests",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration_seconds": 2.31,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json",
+      "pristine_result": "FAIL",
+      "classification": "pool allocation fails in 2 GiB ordinary-memory configuration; reproduced upstream"
+    },
+    {
+      "name": "mempool_perf_autotest_1core",
+      "suite": "perf-tests",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration_seconds": 2.313,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json",
+      "pristine_result": "FAIL",
+      "classification": "pool allocation fails in 2 GiB ordinary-memory configuration; reproduced upstream"
+    },
+    {
+      "name": "mempool_perf_autotest_2cores",
+      "suite": "perf-tests",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration_seconds": 2.306,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json",
+      "pristine_result": "FAIL",
+      "classification": "pool allocation fails in 2 GiB ordinary-memory configuration; reproduced upstream"
+    },
+    {
+      "name": "mempool_perf_autotest_allcores",
+      "suite": "perf-tests",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration_seconds": 2.326,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json",
+      "pristine_result": "FAIL",
+      "classification": "pool allocation fails in 2 GiB ordinary-memory configuration; reproduced upstream"
+    },
+    {
+      "name": "pie_perf",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.168,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "pie_all",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.165,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "pmd_perf_autotest",
+      "suite": "perf-tests",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration_seconds": 0.159,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json",
+      "pristine_result": "FAIL",
+      "classification": "no Ethernet port provided to no-PCI test run"
+    },
+    {
+      "name": "ring_pmd_perf_autotest",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.803,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "rand_perf_autotest",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 2.645,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "rcu_qsbr_perf_autotest",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 277.026,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "reassembly_perf_autotest",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 7.407,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "reciprocal_division",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 146.254,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "reciprocal_division_perf",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 358.524,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "red_perf",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 21.932,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "red_all",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 74.353,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "rib_slow_autotest",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 31.689,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "rib6_slow_autotest",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 31.463,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "ring_perf_autotest",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 4.256,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "service_perf_autotest",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.966,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "stack_perf_autotest",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 7.898,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "stack_lf_perf_autotest",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 9.348,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "thash_perf_autotest",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 21.349,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "timer_perf_autotest",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 12.076,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "timer_racecond_autotest",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 4.227,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "trace_perf_autotest",
+      "suite": "perf-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 0.858,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "ring_stress_autotest",
+      "suite": "stress-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 840.156,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "soring_stress_autotest",
+      "suite": "stress-tests",
+      "result": "PASS",
+      "returncode": 0,
+      "duration_seconds": 840.153,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json"
+    },
+    {
+      "name": "atomic_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=atomic_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 0.666
+    },
+    {
+      "name": "bpf_add_one_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=bpf_add_one_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 0.416
+    },
+    {
+      "name": "bpf_exit_only_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=bpf_exit_only_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 2.622
+    },
+    {
+      "name": "bpf_jump_over_invalid_first_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=bpf_jump_over_invalid_first_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 0.165
+    },
+    {
+      "name": "bpf_jump_over_invalid_non_first_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=bpf_jump_over_invalid_non_first_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 0.165,
+      "initial_attempt_result": "FAIL"
+    },
+    {
+      "name": "bpf_minimal_working_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=bpf_minimal_working_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 0.165
+    },
+    {
+      "name": "bpf_no_exit_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=bpf_no_exit_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 0.165
+    },
+    {
+      "name": "bpf_no_instructions_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=bpf_no_instructions_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 0.165
+    },
+    {
+      "name": "bpf_stack_alignment_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=bpf_stack_alignment_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 0.165
+    },
+    {
+      "name": "bpf_stack_copy_uint128_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=bpf_stack_copy_uint128_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 0.165
+    },
+    {
+      "name": "bpf_stack_memcpy_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=bpf_stack_memcpy_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 0.165
+    },
+    {
+      "name": "bpf_stack_sse2_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=bpf_stack_sse2_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 0.165
+    },
+    {
+      "name": "bpf_subtract_one_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=bpf_subtract_one_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 0.165
+    },
+    {
+      "name": "compressdev_autotest",
+      "result": "SKIP",
+      "returncode": 77,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=compressdev_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 0.165
+    },
+    {
+      "name": "dispatcher_autotest",
+      "result": "SKIP",
+      "returncode": 77,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=dispatcher_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 0.165
+    },
+    {
+      "name": "distributor_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=distributor_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 0.867
+    },
+    {
+      "name": "eal_flags_a_opt_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=eal_flags_a_opt_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 0.265,
+      "pristine_result": "FAIL",
+      "classification": "passes in SNP guest with hugepages; ordinary-memory host configuration fails"
+    },
+    {
+      "name": "eal_flags_b_opt_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=snp-block-standard-patched"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 0.565,
+      "initial_attempt_result": "FAIL",
+      "pristine_result": "FAIL",
+      "classification": "passes in SNP guest with hugepages; ordinary-memory host configuration fails"
+    },
+    {
+      "name": "eal_flags_c_opt_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=eal_flags_c_opt_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 0.165,
+      "pristine_result": "FAIL",
+      "classification": "passes in SNP guest with hugepages; ordinary-memory host configuration fails"
+    },
+    {
+      "name": "eal_flags_file_prefix_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=eal_flags_file_prefix_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 0.165,
+      "pristine_result": "FAIL",
+      "classification": "passes in SNP guest with hugepages; ordinary-memory host configuration fails"
+    },
+    {
+      "name": "eal_flags_hpet_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=eal_flags_hpet_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 0.165,
+      "pristine_result": "FAIL",
+      "classification": "passes in SNP guest with hugepages; ordinary-memory host configuration fails"
+    },
+    {
+      "name": "eal_flags_main_opt_autotest",
+      "result": "SKIP",
+      "returncode": 77,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=eal_flags_main_opt_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 0.316
+    },
+    {
+      "name": "eal_flags_mem_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=eal_flags_mem_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 0.466,
+      "pristine_result": "FAIL",
+      "classification": "passes in SNP guest with hugepages; ordinary-memory host configuration fails"
+    },
+    {
+      "name": "eal_flags_misc_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=eal_flags_misc_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 0.266,
+      "pristine_result": "FAIL",
+      "classification": "passes in SNP guest with hugepages; ordinary-memory host configuration fails"
+    },
+    {
+      "name": "eal_flags_n_opt_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=eal_flags_n_opt_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 1.068
+    },
+    {
+      "name": "eal_flags_no_huge_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=eal_flags_no_huge_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 0.968
+    },
+    {
+      "name": "eal_flags_r_opt_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=eal_flags_r_opt_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 4.327,
+      "pristine_result": "FAIL",
+      "classification": "passes in SNP guest with hugepages; ordinary-memory host configuration fails"
+    },
+    {
+      "name": "eal_flags_vdev_opt_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=eal_flags_vdev_opt_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 13.803
+    },
+    {
+      "name": "event_eth_tx_adapter_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=event_eth_tx_adapter_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 0.315,
+      "pristine_result": "FAIL",
+      "classification": "required event/software device unavailable in this build"
+    },
+    {
+      "name": "func_reentrancy_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=func_reentrancy_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 4.727
+    },
+    {
+      "name": "hash_readwrite_func_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=hash_readwrite_func_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 0.165
+    },
+    {
+      "name": "ipfrag_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=ipfrag_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 0.165
+    },
+    {
+      "name": "malloc_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=malloc_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 1.268
+    },
+    {
+      "name": "mbuf_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=mbuf_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 2.17
+    },
+    {
+      "name": "mcslock_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=mcslock_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 5.179
+    },
+    {
+      "name": "memory_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=memory_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 22.726
+    },
+    {
+      "name": "mempool_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=mempool_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 0.566
+    },
+    {
+      "name": "memzone_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=memzone_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 0.165,
+      "pristine_result": "FAIL",
+      "classification": "passes in SNP guest with hugepages; ordinary-memory host configuration fails"
+    },
+    {
+      "name": "multiprocess_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=multiprocess_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 0.215
+    },
+    {
+      "name": "pdcp_autotest",
+      "result": "SKIP",
+      "returncode": 77,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=pdcp_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 0.165
+    },
+    {
+      "name": "security_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=security_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 0.164
+    },
+    {
+      "name": "stack_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=stack_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 0.215
+    },
+    {
+      "name": "stack_lf_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=stack_lf_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 0.265
+    },
+    {
+      "name": "timer_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=timer_autotest"
+      ],
+      "suite": "supplemental",
+      "duration_seconds": 19.367
+    }
+  ],
+  "host_pristine_comparisons": [
+    {
+      "name": "cryptodev_scheduler_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 0.265,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-native-pristine-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=cryptodev_scheduler_autotest"
+      ],
+      "comparison": "host-pristine"
+    },
+    {
+      "name": "event_dma_adapter_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 0.265,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-native-pristine-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=event_dma_adapter_autotest"
+      ],
+      "comparison": "host-pristine"
+    },
+    {
+      "name": "event_crypto_adapter_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 0.265,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-native-pristine-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=event_crypto_adapter_autotest"
+      ],
+      "comparison": "host-pristine"
+    },
+    {
+      "name": "event_eth_rx_adapter_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 0.315,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-native-pristine-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=event_eth_rx_adapter_autotest"
+      ],
+      "comparison": "host-pristine"
+    },
+    {
+      "name": "event_eth_rx_intr_adapter_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 6.932,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-native-pristine-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=event_eth_rx_intr_adapter_autotest"
+      ],
+      "comparison": "host-pristine"
+    },
+    {
+      "name": "event_timer_adapter_test",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 0.817,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-native-pristine-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=event_timer_adapter_test"
+      ],
+      "comparison": "host-pristine"
+    },
+    {
+      "name": "external_mem_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 0.266,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-native-pristine-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=external_mem_autotest"
+      ],
+      "comparison": "host-pristine"
+    },
+    {
+      "name": "timer_secondary_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 2.37,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-native-pristine-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=timer_secondary_autotest"
+      ],
+      "comparison": "host-pristine"
+    },
+    {
+      "name": "efd_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 0.265,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-native-pristine-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=efd_autotest"
+      ],
+      "comparison": "host-pristine"
+    },
+    {
+      "name": "efd_perf_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 0.817,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-native-pristine-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=efd_perf_autotest"
+      ],
+      "comparison": "host-pristine"
+    },
+    {
+      "name": "bpf_jump_over_invalid_non_first_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.165,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-native-pristine-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=bpf_jump_over_invalid_non_first_autotest"
+      ],
+      "comparison": "host-pristine"
+    },
+    {
+      "name": "eal_flags_a_opt_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 0.266,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-native-pristine-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=eal_flags_a_opt_autotest"
+      ],
+      "comparison": "host-pristine"
+    },
+    {
+      "name": "eal_flags_b_opt_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 0.215,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-native-pristine-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=eal_flags_b_opt_autotest"
+      ],
+      "comparison": "host-pristine"
+    },
+    {
+      "name": "eal_flags_c_opt_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 0.165,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-native-pristine-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=eal_flags_c_opt_autotest"
+      ],
+      "comparison": "host-pristine"
+    },
+    {
+      "name": "eal_flags_file_prefix_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 0.165,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-native-pristine-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=eal_flags_file_prefix_autotest"
+      ],
+      "comparison": "host-pristine"
+    },
+    {
+      "name": "eal_flags_hpet_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 0.165,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-native-pristine-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=eal_flags_hpet_autotest"
+      ],
+      "comparison": "host-pristine"
+    },
+    {
+      "name": "eal_flags_mem_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 0.165,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-native-pristine-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=eal_flags_mem_autotest"
+      ],
+      "comparison": "host-pristine"
+    },
+    {
+      "name": "eal_flags_misc_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 0.165,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-native-pristine-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=eal_flags_misc_autotest"
+      ],
+      "comparison": "host-pristine"
+    },
+    {
+      "name": "eal_flags_r_opt_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 0.215,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-native-pristine-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=eal_flags_r_opt_autotest"
+      ],
+      "comparison": "host-pristine"
+    },
+    {
+      "name": "event_eth_tx_adapter_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 0.166,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-native-pristine-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=event_eth_tx_adapter_autotest"
+      ],
+      "comparison": "host-pristine"
+    },
+    {
+      "name": "memzone_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 0.165,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-native-pristine-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=memzone_autotest"
+      ],
+      "comparison": "host-pristine"
+    },
+    {
+      "name": "mempool_perf_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 21.674,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-native-pristine-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=mempool_perf_autotest"
+      ],
+      "comparison": "host-pristine"
+    },
+    {
+      "name": "mempool_perf_autotest_1core",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 47.686,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-native-pristine-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=mempool_perf_autotest_1core"
+      ],
+      "comparison": "host-pristine"
+    },
+    {
+      "name": "mempool_perf_autotest_2cores",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 30.045,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-native-pristine-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=mempool_perf_autotest_2cores"
+      ],
+      "comparison": "host-pristine"
+    },
+    {
+      "name": "mempool_perf_autotest_allcores",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 30.798,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-native-pristine-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=mempool_perf_autotest_allcores"
+      ],
+      "comparison": "host-pristine"
+    },
+    {
+      "name": "pmd_perf_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 0.316,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-native-pristine-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=pmd_perf_autotest"
+      ],
+      "comparison": "host-pristine"
+    },
+    {
+      "name": "eal_flags_b_opt_autotest",
+      "variant": "pristine",
+      "returncode": 255,
+      "result": "FAIL",
+      "duration": 0.2650831309147179,
+      "command": [
+        "/tmp/snpflow-native-pristine-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=snp-block-standard-pristine"
+      ],
+      "comparison": "host-pristine"
+    }
+  ],
+  "guest_huge_results": [
+    {
+      "name": "atomic_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.669,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=atomic_autotest"
+      ]
+    },
+    {
+      "name": "bpf_add_one_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.366,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=bpf_add_one_autotest"
+      ]
+    },
+    {
+      "name": "bpf_exit_only_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.367,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=bpf_exit_only_autotest"
+      ]
+    },
+    {
+      "name": "bpf_jump_over_invalid_first_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.367,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=bpf_jump_over_invalid_first_autotest"
+      ]
+    },
+    {
+      "name": "bpf_jump_over_invalid_non_first_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.366,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=bpf_jump_over_invalid_non_first_autotest"
+      ]
+    },
+    {
+      "name": "bpf_minimal_working_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.366,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=bpf_minimal_working_autotest"
+      ]
+    },
+    {
+      "name": "bpf_no_exit_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.367,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=bpf_no_exit_autotest"
+      ]
+    },
+    {
+      "name": "bpf_no_instructions_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.367,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=bpf_no_instructions_autotest"
+      ]
+    },
+    {
+      "name": "bpf_stack_alignment_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.367,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=bpf_stack_alignment_autotest"
+      ]
+    },
+    {
+      "name": "bpf_stack_copy_uint128_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.366,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=bpf_stack_copy_uint128_autotest"
+      ]
+    },
+    {
+      "name": "bpf_stack_memcpy_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.366,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=bpf_stack_memcpy_autotest"
+      ]
+    },
+    {
+      "name": "bpf_stack_sse2_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.367,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=bpf_stack_sse2_autotest"
+      ]
+    },
+    {
+      "name": "bpf_subtract_one_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.366,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=bpf_subtract_one_autotest"
+      ]
+    },
+    {
+      "name": "compressdev_autotest",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration": 0.367,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=compressdev_autotest"
+      ]
+    },
+    {
+      "name": "dispatcher_autotest",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration": 0.366,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=dispatcher_autotest"
+      ]
+    },
+    {
+      "name": "distributor_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.968,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=distributor_autotest"
+      ]
+    },
+    {
+      "name": "eal_flags_a_opt_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.618,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=eal_flags_a_opt_autotest"
+      ]
+    },
+    {
+      "name": "eal_flags_b_opt_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.5169355580000001,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-m",
+        "1024",
+        "--file-prefix=snpnative-block-patched"
+      ],
+      "initial_attempt_result": "FAIL",
+      "variant": "patched"
+    },
+    {
+      "name": "eal_flags_c_opt_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 1.071,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=eal_flags_c_opt_autotest"
+      ]
+    },
+    {
+      "name": "eal_flags_file_prefix_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 1.925,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=eal_flags_file_prefix_autotest"
+      ]
+    },
+    {
+      "name": "eal_flags_hpet_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.466,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=eal_flags_hpet_autotest"
+      ]
+    },
+    {
+      "name": "eal_flags_main_opt_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.617,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=eal_flags_main_opt_autotest"
+      ]
+    },
+    {
+      "name": "eal_flags_mem_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.973,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=eal_flags_mem_autotest"
+      ]
+    },
+    {
+      "name": "eal_flags_misc_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 2.428,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=eal_flags_misc_autotest"
+      ]
+    },
+    {
+      "name": "eal_flags_n_opt_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.769,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=eal_flags_n_opt_autotest"
+      ]
+    },
+    {
+      "name": "eal_flags_no_huge_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.769,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=eal_flags_no_huge_autotest"
+      ]
+    },
+    {
+      "name": "eal_flags_r_opt_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.518,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=eal_flags_r_opt_autotest"
+      ]
+    },
+    {
+      "name": "eal_flags_vdev_opt_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.869,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=eal_flags_vdev_opt_autotest"
+      ]
+    },
+    {
+      "name": "event_eth_tx_adapter_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 0.367,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=event_eth_tx_adapter_autotest"
+      ]
+    },
+    {
+      "name": "func_reentrancy_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.619,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=func_reentrancy_autotest"
+      ]
+    },
+    {
+      "name": "hash_readwrite_func_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.367,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=hash_readwrite_func_autotest"
+      ]
+    },
+    {
+      "name": "ipfrag_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.367,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=ipfrag_autotest"
+      ]
+    },
+    {
+      "name": "malloc_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 1.622,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=malloc_autotest"
+      ]
+    },
+    {
+      "name": "mbuf_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.717,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=mbuf_autotest"
+      ]
+    },
+    {
+      "name": "mcslock_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.617,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=mcslock_autotest"
+      ]
+    },
+    {
+      "name": "memory_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.568,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=memory_autotest"
+      ]
+    },
+    {
+      "name": "mempool_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.718,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=mempool_autotest"
+      ]
+    },
+    {
+      "name": "memzone_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.568,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=memzone_autotest"
+      ]
+    },
+    {
+      "name": "multiprocess_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.468,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=multiprocess_autotest"
+      ]
+    },
+    {
+      "name": "pdcp_autotest",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration": 0.417,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=pdcp_autotest"
+      ]
+    },
+    {
+      "name": "security_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.418,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=security_autotest"
+      ]
+    },
+    {
+      "name": "stack_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.417,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=stack_autotest"
+      ]
+    },
+    {
+      "name": "stack_lf_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.467,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=stack_lf_autotest"
+      ]
+    },
+    {
+      "name": "timer_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 4.579,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=timer_autotest"
+      ]
+    },
+    {
+      "name": "external_mem_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.417,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=external_mem_autotest"
+      ]
+    },
+    {
+      "name": "timer_secondary_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 2.429,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=timer_secondary_autotest"
+      ]
+    },
+    {
+      "name": "efd_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 0.367,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=efd_autotest"
+      ]
+    },
+    {
+      "name": "efd_perf_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 1.122,
+      "timeout": 180,
+      "command": [
+        "/tmp/snpnative/patched/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=efd_perf_autotest"
+      ]
+    }
+  ],
+  "guest_pristine_comparisons": [
+    {
+      "name": "event_eth_tx_adapter_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 0.366,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpnative/pristine/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=event_eth_tx_adapter_autotest"
+      ]
+    },
+    {
+      "name": "efd_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 0.367,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpnative/pristine/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=efd_autotest"
+      ]
+    },
+    {
+      "name": "efd_perf_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 1.021,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpnative/pristine/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "-m",
+        "1024",
+        "--file-prefix=efd_perf_autotest"
+      ]
+    },
+    {
+      "name": "eal_flags_b_opt_autotest",
+      "variant": "pristine",
+      "returncode": 0,
+      "result": "PASS",
+      "duration": 0.5676220359999888,
+      "command": [
+        "/tmp/snpnative/pristine/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-m",
+        "1024",
+        "--file-prefix=snpnative-block-pristine"
+      ]
+    }
+  ],
+  "diagnostics": [
+    {
+      "variant": "patched",
+      "name": "efd_autotest",
+      "result": "TIMEOUT",
+      "timeout": 120,
+      "diagnostic": "--force-max-simd-bitwidth=64; passed initial lookup assertions and reached table utilization test; full test did not finish"
+    }
+  ],
+  "pending_baseline_comparisons": [],
+  "excluded_source_files": [
+    "test_flow_classify.c",
+    "test_link_bonding.c",
+    "test_link_bonding_mode4.c",
+    "test_link_bonding_rssconf.c",
+    "test_pcapng.c",
+    "test_power.c",
+    "test_power_cpufreq.c",
+    "test_power_intel_uncore.c",
+    "test_power_kvm_vm.c",
+    "test_rawdev.c"
+  ],
+  "limits": [
+    "Top-level test outcomes; passing commands may contain skipped internal subcases",
+    "Enabled build only, not all upstream drivers/components",
+    "No xbuf allocation, private bridge, or NIC DMA exercised in these native tests",
+    "Not a controlled performance comparison",
+    "Two SNPFlow mlx5 validation commands excluded from upstream counts"
+  ],
+  "software_initial_results": [
+    {
+      "name": "eventdev_common_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.165,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=eventdev_common_autotest"
+      ]
+    },
+    {
+      "name": "eventdev_selftest_sw",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 2.321,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=eventdev_selftest_sw"
+      ]
+    },
+    {
+      "name": "ipsec_autotest",
+      "result": "FAIL",
+      "returncode": -11,
+      "duration": 1.318,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=ipsec_autotest",
+        "--vdev=crypto_null0"
+      ]
+    },
+    {
+      "name": "event_dma_adapter_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.265,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=event_dma_adapter_autotest",
+        "--vdev=dma_skeleton0"
+      ]
+    },
+    {
+      "name": "event_crypto_adapter_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.215,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=event_crypto_adapter_autotest"
+      ]
+    },
+    {
+      "name": "event_eth_rx_adapter_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 2.22,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=event_eth_rx_adapter_autotest"
+      ]
+    },
+    {
+      "name": "event_eth_rx_intr_adapter_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 2.221,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=event_eth_rx_intr_adapter_autotest"
+      ]
+    },
+    {
+      "name": "event_eth_tx_adapter_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.366,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=event_eth_tx_adapter_autotest"
+      ]
+    },
+    {
+      "name": "event_timer_adapter_test",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 281.129,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=event_timer_adapter_test"
+      ]
+    },
+    {
+      "name": "cryptodev_null_autotest",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration": 1.016,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=cryptodev_null_autotest"
+      ]
+    },
+    {
+      "name": "cryptodev_openssl_autotest",
+      "result": "SKIP",
+      "returncode": 77,
+      "duration": 1.017,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=cryptodev_openssl_autotest"
+      ]
+    },
+    {
+      "name": "cryptodev_openssl_asym_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.666,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=cryptodev_openssl_asym_autotest"
+      ]
+    },
+    {
+      "name": "cryptodev_crosscheck",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 1.97,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=cryptodev_crosscheck",
+        "--vdev=crypto_openssl0",
+        "--vdev=crypto_openssl1"
+      ]
+    },
+    {
+      "name": "compressdev_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.867,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=compressdev_autotest",
+        "--vdev=compress_zlib0"
+      ]
+    },
+    {
+      "name": "pdcp_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 39.019,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=pdcp_autotest",
+        "--vdev=crypto_openssl0"
+      ]
+    },
+    {
+      "name": "dmadev_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 1.167,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=dmadev_autotest"
+      ]
+    },
+    {
+      "name": "rawdev_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.165,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=rawdev_autotest"
+      ]
+    },
+    {
+      "name": "link_bonding_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 3.874,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=link_bonding_autotest"
+      ]
+    },
+    {
+      "name": "link_bonding_mode4_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 26.786,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=link_bonding_mode4_autotest"
+      ]
+    },
+    {
+      "name": "link_bonding_rssconf_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.265,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=link_bonding_rssconf_autotest"
+      ]
+    }
+  ],
+  "software_profile_results": [
+    {
+      "name": "eventdev_common_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.165,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=eventdev_common_autotest"
+      ]
+    },
+    {
+      "name": "eventdev_selftest_sw",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 2.321,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=eventdev_selftest_sw"
+      ]
+    },
+    {
+      "name": "ipsec_autotest",
+      "result": "FAIL",
+      "returncode": -11,
+      "duration": 1.318,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=ipsec_autotest",
+        "--vdev=crypto_null0"
+      ],
+      "pristine_result": "FAIL"
+    },
+    {
+      "name": "event_dma_adapter_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.265,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=event_dma_adapter_autotest",
+        "--vdev=dma_skeleton0"
+      ]
+    },
+    {
+      "name": "event_crypto_adapter_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.215,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=event_crypto_adapter_autotest"
+      ]
+    },
+    {
+      "name": "event_eth_rx_adapter_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 2.22,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "16-23",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "4096",
+        "--file-prefix=event_eth_rx_adapter_autotest"
+      ],
+      "initial_attempt_result": "FAIL"
+    },
+    {
+      "name": "event_eth_rx_intr_adapter_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 2.271,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "16-23",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "4096",
+        "--file-prefix=event_eth_rx_intr_adapter_autotest"
+      ],
+      "initial_attempt_result": "FAIL",
+      "pristine_result": "FAIL"
+    },
+    {
+      "name": "event_eth_tx_adapter_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.366,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=event_eth_tx_adapter_autotest"
+      ]
+    },
+    {
+      "name": "event_timer_adapter_test",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 224.57,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "16-23",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=event_timer_adapter_test"
+      ],
+      "initial_attempt_result": "FAIL"
+    },
+    {
+      "name": "cryptodev_null_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.265,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=cryptodev_null_autotest",
+        "--vdev=crypto_null0"
+      ],
+      "initial_attempt_result": "SKIP"
+    },
+    {
+      "name": "cryptodev_openssl_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.365,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=cryptodev_openssl_autotest",
+        "--vdev=crypto_openssl0"
+      ],
+      "initial_attempt_result": "SKIP"
+    },
+    {
+      "name": "cryptodev_openssl_asym_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.666,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=cryptodev_openssl_asym_autotest"
+      ]
+    },
+    {
+      "name": "cryptodev_crosscheck",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 1.97,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=cryptodev_crosscheck",
+        "--vdev=crypto_openssl0",
+        "--vdev=crypto_openssl1"
+      ]
+    },
+    {
+      "name": "compressdev_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.867,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=compressdev_autotest",
+        "--vdev=compress_zlib0"
+      ]
+    },
+    {
+      "name": "pdcp_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 39.019,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=pdcp_autotest",
+        "--vdev=crypto_openssl0"
+      ]
+    },
+    {
+      "name": "dmadev_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 1.167,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=dmadev_autotest"
+      ]
+    },
+    {
+      "name": "rawdev_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.165,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=rawdev_autotest"
+      ]
+    },
+    {
+      "name": "link_bonding_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 3.874,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=link_bonding_autotest"
+      ]
+    },
+    {
+      "name": "link_bonding_mode4_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 26.786,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=link_bonding_mode4_autotest"
+      ]
+    },
+    {
+      "name": "link_bonding_rssconf_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.265,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=link_bonding_rssconf_autotest"
+      ]
+    }
+  ],
+  "software_pristine_comparisons": [
+    {
+      "name": "ipsec_autotest",
+      "result": "FAIL",
+      "returncode": -11,
+      "duration": 2.019,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-pristine-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=ipsec_autotest",
+        "--vdev=crypto_null0"
+      ]
+    },
+    {
+      "name": "event_eth_rx_adapter_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 30.545,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-pristine-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=event_eth_rx_adapter_autotest"
+      ]
+    },
+    {
+      "name": "event_eth_rx_intr_adapter_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 13.9,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-pristine-build/app/dpdk-test",
+        "-l",
+        "8-15",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=event_eth_rx_intr_adapter_autotest"
+      ]
+    },
+    {
+      "name": "event_eth_rx_adapter_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 2.22,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-pristine-build/app/dpdk-test",
+        "-l",
+        "16-23",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "4096",
+        "--file-prefix=event_eth_rx_adapter_autotest"
+      ]
+    },
+    {
+      "name": "event_eth_rx_intr_adapter_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 2.221,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-pristine-build/app/dpdk-test",
+        "-l",
+        "16-23",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "4096",
+        "--file-prefix=event_eth_rx_intr_adapter_autotest"
+      ]
+    },
+    {
+      "name": "event_timer_adapter_test",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 224.426,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-native-software-pristine-build/app/dpdk-test",
+        "-l",
+        "16-23",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=event_timer_adapter_test"
+      ]
+    }
+  ],
+  "binary_sha256": {
+    "host_patched": "ccfd1a804ae810b4ec0b0991ccb6992a57dc43bdf28395ea5451d410ddf59504",
+    "host_pristine": "798e06358d85b32b46540325089b94ec6492285882dd7bd122549cb7f154b504",
+    "software_patched": "fc951bd29039fad66945de6ef82ab5003421ebdab39e17e4c5abddb1f0c78569",
+    "software_pristine": "3e622782d92e49ff595fdd798d767e941483c9f62f8c3cca9d6e01c94e537f42"
+  },
+  "software_extra_drivers": "event/sw,event/skeleton,dma/skeleton,raw/skeleton,crypto/null,crypto/openssl,compress/zlib,net/bonding"
+}
