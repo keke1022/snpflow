@@ -84,11 +84,146 @@
   ],
   "binary_sha256": {
     "before": "ccfd1a804ae810b4ec0b0991ccb6992a57dc43bdf28395ea5451d410ddf59504",
-    "efd_after": "c8c4eaba67a57b940d2f07108544f6da1b910884ab7131c66f56f491e14209b0"
+    "efd_after": "c8c4eaba67a57b940d2f07108544f6da1b910884ab7131c66f56f491e14209b0",
+    "software_before": "fc951bd29039fad66945de6ef82ab5003421ebdab39e17e4c5abddb1f0c78569",
+    "software_after": "bfc93bb6bf086a255cd68d6bcd56443d305531cafb288d97ebe8d193881eaca7",
+    "avx2_diagnostic": "1821936f674062592f8d0b5d1e8150d90537408790a37b2877eea8e9e9eb15fc",
+    "new_test_old_security_library": "3529fb34487c1e1437c20ea7dfa63d9eb2965684c475462c8d9a5888d8e900e6"
   },
   "limits": [
     "Targeted reruns only; original full-suite counts are not recalculated",
     "No xbuf/private bridge/NIC DMA in these native commands",
     "Shared host; durations are not controlled performance measurements"
-  ]
+  ],
+  "security_patch": "0012-security-session-size-validation.patch",
+  "efd_avx2_diagnostic": [
+    {
+      "name": "efd_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 16.31,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-upstream-fixes/avx2/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=efd_autotest"
+      ]
+    },
+    {
+      "name": "efd_perf_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 9.892,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-upstream-fixes/avx2/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=efd_perf_autotest"
+      ]
+    }
+  ],
+  "security_after": [
+    {
+      "name": "security_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.165,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "16-23",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=security_autotest",
+        "--vdev=crypto_null0"
+      ]
+    },
+    {
+      "name": "ipsec_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 0.265,
+      "timeout": 120,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "-l",
+        "16-23",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=ipsec_autotest",
+        "--vdev=crypto_null0"
+      ]
+    }
+  ],
+  "security_new_test_old_library": [
+    {
+      "name": "security_autotest",
+      "result": "FAIL",
+      "returncode": -11,
+      "duration": 1.268,
+      "timeout": 60,
+      "command": [
+        "/tmp/snpflow-upstream-fixes/negative/app/dpdk-test",
+        "-l",
+        "16-23",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=security_autotest"
+      ]
+    }
+  ],
+  "patch_application": {
+    "release": "138e9168feac7091f8ea8f90da95554b7480113c",
+    "historical": "a99e55096ffddbfce7687e6c7a2355e4f990770a"
+  },
+  "ci_runner": {
+    "command": [
+      "bash",
+      "scripts/test-dpdk-upstream.sh",
+      "/tmp/snpflow-native-software-build"
+    ],
+    "exit_status": 0,
+    "test_statuses": {
+      "efd_autotest": 0,
+      "efd_perf_autotest": 0,
+      "security_autotest": 0,
+      "ipsec_autotest": 0
+    }
+  },
+  "integration": {
+    "command": [
+      "python3",
+      "scripts/test-dpdk-integration.py",
+      "/tmp/snpflow-dpdk-build"
+    ],
+    "exit_status": 0,
+    "cases": 48
+  }
 }

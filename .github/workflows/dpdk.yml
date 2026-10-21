@@ -33,7 +33,7 @@ jobs:
         run: |
           meson setup "$RUNNER_TEMP/dpdk-build" "$RUNNER_TEMP/dpdk" \
             -Dtests=true -Ddefault_library=static -Dplatform=generic \
-            '-Denable_drivers=bus/*,common/mlx5,net/mlx5,net/null,net/ring,mempool/ring' \
+            '-Denable_drivers=bus/*,common/mlx5,net/mlx5,net/null,net/ring,mempool/ring,crypto/null' \
             -Denable_apps=test,test-pmd -Dexamples=l2fwd,l3fwd
           ninja -C "$RUNNER_TEMP/dpdk-build" -j 2
       - name: Production-header guard tests
@@ -45,6 +45,8 @@ jobs:
           done
       - name: Production-code and forwarding regressions
         run: python3 scripts/test-dpdk-integration.py "$RUNNER_TEMP/dpdk-build"
+      - name: Upstream EFD, security and IPsec regressions
+        run: bash scripts/test-dpdk-upstream.sh "$RUNNER_TEMP/dpdk-build"
       - name: Address and undefined-behavior sanitizers
         run: python3 scripts/test-dpdk-integration.py "$RUNNER_TEMP/dpdk-build" --sanitize
       - name: Retain Meson diagnostics
@@ -52,4 +54,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: dpdk-meson-logs
-          path: ${{ runner.temp }}/dpdk-build/meson-logs/
+          path: |
+            ${{ runner.temp }}/dpdk-build/meson-logs/
+            ${{ runner.temp }}/dpdk-build/snpflow-upstream-tests/

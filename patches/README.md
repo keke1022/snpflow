@@ -61,6 +61,7 @@ that differs from the recorded release is rejected before any changes.
 | 0009 | Private CQE snapshots, guarded error/opcode handling, nonempty RX completions | SNPFlow correctness fix, 2026-10-20 |
 | 0010 | Private forwarding/GSO pools, strict buffer ownership, explicit unsupported-mode checks | SNPFlow coverage extension, 2026-10-20 |
 | 0011 | Select EFD AVX2 lookup only when its implementation was compiled | Upstream audit follow-up, 2026-10-21 |
+| 0012 | Reject missing security session-size callbacks; repair IPsec test fixture and add a rejection regression | Upstream audit follow-up, 2026-10-21 |
 
 Patch 0006 folds intermediate experiments and reversions into the tested final
 state. It was recovered on 2026-10-20 by reading the powered-off CVM disk and
@@ -76,12 +77,14 @@ Their implementation is unchanged.
 | Official release, fully imported | `893022eb662f7517dc58f3f8bd0e4b7c417138cd` |
 | Official release, through 0010 | `488ff6198a811383b3d8bb71b23b09dcbe8e1d36` |
 | Official release, through 0011 | `874701773735b7b90214eab6841896eedc312947` |
+| Official release, through 0012 | `138e9168feac7091f8ea8f90da95554b7480113c` |
 | Archived CVM import | `d09d6d6f46cef3d6234ba7f11ee7e187e0ca4e02` |
 | Conservative baseline, through 0006 | `6dc438c1e5f09ee298ef7d84f1f490e19f96b352` |
 | Private bridge, through 0007 | `2b6019b4092fc728203063b0a05fa3ae899d0838` |
 | Authenticated receiver, through 0008 | `0284ee73f1416fe6b1ce9c9d24070eb82b776bfd` |
 | CQE snapshots and private forwarding, through 0010 | `bc671f0bfef8c50f2934d3002b76afe68397ccf4` |
 | EFD generic-build dispatch fix, through 0011 | `1dbb76f412f4cf159acc86951a970515daf2bc16` |
+| Security session-size validation, through 0012 | `a99e55096ffddbfce7687e6c7a2355e4f990770a` |
 
 The tree through 0008 corresponds to the archived receiver implementation.
 Patches 0009 and 0010 extend that implementation; the earlier patches remain

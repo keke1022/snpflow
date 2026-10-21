@@ -10,6 +10,19 @@ The separate [upstream test audit](../../docs/VALIDATION-2026-10-21-upstream-tes
 records the original suite's passes, skips and failures, including comparisons
 against the unmodified release and supplemental SNP hugepage runs.
 
+The [upstream failure fixes](../../docs/VALIDATION-2026-10-21-upstream-fixes.md)
+add targeted EFD, security and IPsec regressions to CI. Enable `crypto/null`
+alongside the build's normal drivers, apply the full patch series, and run:
+
+```sh
+bash scripts/test-dpdk-upstream.sh /path/to/dpdk/build
+```
+
+This runs four original upstream commands with a 600-second limit per
+command, no NIC or hugepages, and 2 GiB of memory. It records logs and exit
+statuses under the build's `snpflow-upstream-tests/` directory and fails on
+skips as well as errors. This targeted group does not replace the full audit.
+
 Apply the [complete patch series](../../patches/README.md), then build:
 
 ```sh

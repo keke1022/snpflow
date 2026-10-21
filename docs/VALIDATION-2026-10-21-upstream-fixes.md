@@ -32,6 +32,58 @@ The functional test completed all three 2,097,152-key utilization iterations
 with no lost keys. Durations are observations on a shared host, not a
 performance comparison with the invalid pre-fix implementation.
 
+A diagnostic variant compiled only `rte_efd.c` with `-mavx2` and relinked the
+otherwise unchanged binary. Both commands also passed (16.310 and 9.892
+seconds), checking that the compiled AVX2 path remains usable.
+
+## IPsec: an incomplete mock device exposed an unchecked callback
+
+The crash is not a failure to encrypt with the NULL crypto PMD. The IPsec
+suite constructs its own dummy security context for inline-security cases.
+Its operations included create/destroy callbacks but omitted
+`session_get_size`. `rte_security_session_create()` checked the create
+callback, then called the absent size callback unconditionally. The debugger
+trace through address zero identified this call before packet processing.
+
+[Patch 0012](../patches/dpdk-25.11.3/0012-security-session-size-validation.patch)
+makes two corrections:
+
+- The dummy device supplies a size callback returning zero, since it has no
+  driver-private session data. It still allocates the common session header.
+- The security library rejects a missing size callback before allocating a
+  session, consistent with its validation of the create callback.
+
+An added `security_autotest` case provides valid operations except for the
+missing size callback. It checks NULL return, no create callback invocation,
+no consumed mempool object, and no session-count increment. Linking that new
+test against the unmodified security library reproduced SIGSEGV (return code
+`-11`); linking it against the corrected library passed.
+
+The full `ipsec_autotest --vdev=crypto_null0` passed **15/15** subcases.
+`security_autotest` passed **57** subcases, including the new regression,
+with **3** existing metadata-validation cases skipped in this non-debug build.
+No inline-security assertions were removed or reclassified as skips.
+
+## Reproducible checks
+
+The complete twelve-patch series was reapplied from both recorded clean
+baselines. Both resulting tree hashes match the updated manifests. The full
+host build, including testpmd and the examples, succeeded, and the existing
+48 SNPFlow production-code regressions passed.
+
+CI now enables `crypto/null` and runs four upstream commands: `efd_autotest`,
+`efd_perf_autotest`, `security_autotest`, and `ipsec_autotest`. The exact CI
+runner also passed locally:
+
+```sh
+bash scripts/test-dpdk-upstream.sh /path/to/dpdk-build
+```
+
+Each command has a 600-second limit; errors, skips, crashes, and timeouts make
+the runner fail. Per-command logs and a status table are retained as CI
+artifacts. The original hardware and build-dependent upstream tests remain
+outside this targeted CI group.
+
 ## Evidence and scope
 
 The [machine-readable evidence](results/2026-10-21-upstream-fixes.json)
