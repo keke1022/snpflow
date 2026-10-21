@@ -1,6 +1,6 @@
 {
   "date": "2026-10-21",
-  "baseline_repository_revision": "ae3d39ba29f2",
+  "baseline_repository_revision": "ae3d39ba29f2063449a9dba59fbf4e45eaad92ee",
   "efd_patch": "0011-efd-generic-lookup-dispatch.patch",
   "efd_before": [
     {
@@ -225,5 +225,154 @@
     ],
     "exit_status": 0,
     "cases": 48
-  }
+  },
+  "mempool_allocation_diagnostic": [
+    {
+      "variant": "patched-before",
+      "memory_mib": 2048,
+      "all_four_pools_allocated": false,
+      "gdb_returncode": 1,
+      "duration": 2.522,
+      "command": [
+        "gdb",
+        "--batch",
+        "-x",
+        "/tmp/snpflow-upstream-fixes/mempool-probe.gdb",
+        "--args",
+        "/tmp/snpflow-upstream-fixes/dpdk-test-before",
+        "-l",
+        "16-23",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=mp-setup"
+      ],
+      "scope": "Stop at first benchmark function; allocation diagnostic only, not a completed performance test"
+    },
+    {
+      "variant": "patched-before",
+      "memory_mib": 6144,
+      "all_four_pools_allocated": true,
+      "gdb_returncode": 0,
+      "duration": 4.379,
+      "command": [
+        "gdb",
+        "--batch",
+        "-x",
+        "/tmp/snpflow-upstream-fixes/mempool-probe.gdb",
+        "--args",
+        "/tmp/snpflow-upstream-fixes/dpdk-test-before",
+        "-l",
+        "16-23",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "6144",
+        "--file-prefix=mp-setup"
+      ],
+      "scope": "Stop at first benchmark function; allocation diagnostic only, not a completed performance test"
+    },
+    {
+      "variant": "pristine",
+      "memory_mib": 6144,
+      "all_four_pools_allocated": true,
+      "gdb_returncode": 0,
+      "duration": 4.276,
+      "command": [
+        "gdb",
+        "--batch",
+        "-x",
+        "/tmp/snpflow-upstream-fixes/mempool-probe.gdb",
+        "--args",
+        "/tmp/snpflow-native-pristine-build/app/dpdk-test",
+        "-l",
+        "16-23",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "6144",
+        "--file-prefix=mp-setup"
+      ],
+      "scope": "Stop at first benchmark function; allocation diagnostic only, not a completed performance test"
+    }
+  ],
+  "ci_runner_before": {
+    "command": [
+      "bash",
+      "scripts/test-dpdk-upstream.sh",
+      "/tmp/snpflow-upstream-fixes/before-software"
+    ],
+    "exit_status": 1,
+    "test_statuses": {
+      "efd_autotest": 255,
+      "efd_perf_autotest": 255,
+      "security_autotest": 0,
+      "ipsec_autotest": 139
+    }
+  },
+  "timer_same_original_cpu_range": {
+    "scope": "Pre-fix binaries, same lcores 8-15 as the initial failure; no timer source changes",
+    "patched_before": [
+      {
+        "name": "event_timer_adapter_test",
+        "result": "PASS",
+        "returncode": 0,
+        "duration": 224.614,
+        "timeout": 600,
+        "command": [
+          "/tmp/snpflow-upstream-fixes/before-software/app/dpdk-test",
+          "-l",
+          "8-15",
+          "--no-pci",
+          "-a",
+          "0000:00:00.0",
+          "--no-huge",
+          "-m",
+          "2048",
+          "--file-prefix=event_timer_adapter_test"
+        ]
+      }
+    ],
+    "pristine": [
+      {
+        "name": "event_timer_adapter_test",
+        "result": "PASS",
+        "returncode": 0,
+        "duration": 224.545,
+        "timeout": 600,
+        "command": [
+          "/tmp/snpflow-native-software-pristine-build/app/dpdk-test",
+          "-l",
+          "8-15",
+          "--no-pci",
+          "-a",
+          "0000:00:00.0",
+          "--no-huge",
+          "-m",
+          "2048",
+          "--file-prefix=event_timer_adapter_test"
+        ]
+      }
+    ],
+    "initial_failure_cause": "Not established; original failure retained in upstream audit"
+  },
+  "github_ci_for_code_revision": [
+    {
+      "id": 39574286788,
+      "name": "Portable checks",
+      "head_sha": "61dd1fc2654e829dd524bbad6ef756054eb5c358",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/keke1022/snpflow/actions/runs/39574286788"
+    },
+    {
+      "id": 39574286790,
+      "name": "DPDK integration",
+      "head_sha": "61dd1fc2654e829dd524bbad6ef756054eb5c358",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/keke1022/snpflow/actions/runs/39574286790"
+    }
+  ]
 }

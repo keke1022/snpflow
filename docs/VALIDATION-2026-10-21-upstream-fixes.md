@@ -84,6 +84,72 @@ the runner fail. Per-command logs and a status table are retained as CI
 artifacts. The original hardware and build-dependent upstream tests remain
 outside this targeted CI group.
 
+For code revision `61dd1fc2654e829dd524bbad6ef756054eb5c358`, both GitHub
+workflows completed successfully:
+[portable checks](https://github.com/keke1022/snpflow/actions/runs/39574286788)
+and [DPDK integration](https://github.com/keke1022/snpflow/actions/runs/39574286790).
+The latter includes the four native commands, production-code regressions,
+and the existing ASan/UBSan regressions. These CI results do not imply that
+every upstream test or every enabled library was sanitizer-instrumented.
+
+Running the same runner against the preserved pre-fix software-profile
+executable returned failure: both EFD commands exited 255, IPsec exited 139
+(SIGSEGV), and the old security suite passed. This confirms that the CI
+commands exercise the failures rather than merely accepting a successful
+process startup.
+
+## Why the other host entries failed
+
+The original 25 host failures break down as follows. This table explains
+their initial failures; it is not a revised full-suite pass count.
+
+| Entries | Cause | Evidence / disposition |
+|---:|---|---|
+| 2 | Generic EFD dispatch selects unavailable AVX2 code | Fixed in 0011; both original commands pass |
+| 11 | Ordinary-memory configuration cannot meet hugepage/secondary-process assumptions | All eleven pass in the earlier SNP hugepage rerun |
+| 6 | Event adapter software drivers unavailable in the original build | Expanded-driver run exercises the adapters; RX interrupt support remains unavailable on `net_null` |
+| 1 | Crypto scheduler disabled; Meson lists a command absent from the executable | Build configuration issue; not a passing test |
+| 4 | Four performance mempools do not fit the 2-GiB budget | Allocation-only diagnostic below |
+| 1 | PMD performance test has no Ethernet port | `--no-pci` run supplies no port; no NIC performance claim |
+
+The four mempool commands share the same allocation routine. Its capacity is
+`lcore_count * (32768 + 2 * 512) - 1` objects per pool: 270,335 objects for
+eight lcores. It creates four 2,048-byte-object pools before benchmarking.
+Even payload alone exceeds 2 GiB; ordinary 4-KiB pages and object metadata
+increase the requirement further. The `1core` command still sizes its pools
+using all enabled EAL lcores, so its name does not imply a small allocation.
+
+A debugger probe on the preserved pre-fix binary reproduced allocation
+failure with `-m 2048`. With `-m 6144`, both that binary and pristine DPDK
+reached `do_one_mempool_test()`, which is called only after all four pools
+have been created. The probe stopped there. It validates the allocation
+diagnosis, **not completion of the performance tests**.
+
+The benchmark also contains hundreds of one-second cases per cache mode;
+completing it requires an appropriate long-run timeout after fixing the
+memory budget. Its original failures have not been relabeled as passes.
+
+## Timer: the first failure is still not reproducible
+
+The follow-up used the exact preserved pre-fix patched executable and the
+pristine executable on lcores **8–15**, matching the initially failing CPU
+range. Each passed **31/31** cases, in 224.614 and 224.545 seconds respectively.
+The earlier successful comparisons on lcores 16–23 are therefore not the
+only successful runs. The new EFD and security changes were not present in
+these two timer executables.
+
+The first failing log begins with the periodic timer count missing its
+one-second window; later cases also report unexpected events (for example,
+16 dequeued instead of 1). The suite shares an event device across cases, so
+these symptoms do not establish twelve independent implementation defects.
+The software timer depends on service-lcore scheduling, but no scheduler trace
+was captured during the initial failure. Current successful reruns do not
+prove that scheduling caused it, nor that a particular CPU range is faulty.
+
+The initial failure remains recorded. No timer assertions, tick values, or
+timeouts were changed. Diagnosing it conclusively requires capturing the
+next failure with service-lcore scheduling and event-queue state.
+
 ## Evidence and scope
 
 The [machine-readable evidence](results/2026-10-21-upstream-fixes.json)
