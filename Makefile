@@ -21,7 +21,7 @@ clean:
 	rm -f build/bounds-test
 	$(MAKE) -C scratch/cvm-chunk-proto clean
 
-.PHONY: all clean test check test-dpdk
+.PHONY: all clean test check test-dpdk test-hooks install-hooks uninstall-hooks
 
 # Portable checks: no NIC, GPU, kernel module, or root privileges needed.
 build/bounds-test: bounds-test.c
@@ -32,8 +32,19 @@ test: build/bounds-test
 	./build/bounds-test
 	$(MAKE) -C scratch/cvm-chunk-proto test
 	$(PYTHON) scratch/secure-kv-channel/secure_kv_channel.py
+	$(MAKE) test-hooks PYTHON="$(PYTHON)"
+
+test-hooks:
+	$(PYTHON) -m unittest discover -s tests/hooks -v
+
+install-hooks:
+	$(PYTHON) scripts/git-hooks.py install
+
+uninstall-hooks:
+	$(PYTHON) scripts/git-hooks.py uninstall
 
 check:
+	$(PYTHON) scripts/git-hooks.py check-index --all
 	$(PYTHON) scripts/check-repo.py
 
 # Real DPDK code, using a previously built tree; no NIC or root needed.

@@ -145,6 +145,10 @@ make test
 make check
 ```
 
+Contributors can enable local commit/push checks with `make install-hooks`.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow and
+[SECURITY.md](SECURITY.md) for private vulnerability reporting.
+
 `make test` runs the standalone boundary model, C authenticated-protocol tests,
 and Python channel model. These do not require root, DPDK, a NIC, or a GPU.
 They do not substitute for the tests compiled against the actual mlx5 headers
