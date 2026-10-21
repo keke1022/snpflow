@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="420" viewBox="0 0 1100 420">
+<defs>
+  <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="14" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto">
+    <path d="M0,0 L10,5 L0,10 z" fill="#2e5c9e"/></marker>
+  <marker id="arrow-orange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="14" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto">
+    <path d="M0,0 L10,5 L0,10 z" fill="#c0501a"/></marker>
+</defs>
+<rect width="1100" height="420" fill="#fff"/>
+<text x="40" y="42" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="20" font-weight="bold" font-style="normal" text-anchor="start" fill="#595959">Inside the guest VM</text>
+<text x="940" y="42" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="20" font-weight="bold" font-style="normal" text-anchor="middle" fill="#595959">Host side</text>
+<g id="guest">
+<rect x="40" y="60" width="680" height="340" rx="12" fill="#eceef2" stroke="none" stroke-width="1.5"/>
+<g id="kernel-page-table">
+<rect x="70" y="95" width="330" height="100" rx="8" fill="#fff" stroke="#2e5c9e" stroke-width="2.5"/>
+<text x="90" y="128" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="20" font-weight="bold" font-style="normal" text-anchor="start" fill="#222222">Guest kernel page table</text>
+<text x="90" y="158" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="18" font-weight="normal" font-style="normal" text-anchor="start" fill="#222222">kernel virtual address K</text>
+<text x="90" y="182" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="15" font-weight="normal" font-style="normal" text-anchor="start" fill="#595959">direct map (alloc_pages)</text>
+</g>
+<g id="process-page-table">
+<rect x="70" y="265" width="330" height="100" rx="8" fill="#fff" stroke="#2e5c9e" stroke-width="2.5"/>
+<text x="90" y="298" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="20" font-weight="bold" font-style="normal" text-anchor="start" fill="#222222">DPDK process page table</text>
+<text x="90" y="328" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="18" font-weight="normal" font-style="normal" text-anchor="start" fill="#222222">user virtual address P</text>
+<text x="90" y="352" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="15" font-weight="normal" font-style="normal" text-anchor="start" fill="#595959">via mmap()</text>
+</g>
+<g id="physical-page">
+<rect x="520" y="190" width="170" height="70" rx="4" fill="#fce4d6" stroke="#222222" stroke-width="1.5"/>
+<text x="605" y="232" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="20" font-weight="bold" font-style="normal" text-anchor="middle" fill="#222222">Physical page X</text>
+</g>
+<g id="mapping-arrows">
+<polyline points="400,145 450,145 450,213 512,213" fill="none" stroke="#2e5c9e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow-blue)"/>
+<text x="425" y="135" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="16" font-weight="bold" font-style="normal" text-anchor="middle" fill="#2e5c9e">K → X</text>
+<polyline points="400,315 450,315 450,237 512,237" fill="none" stroke="#2e5c9e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow-blue)"/>
+<text x="425" y="305" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="16" font-weight="bold" font-style="normal" text-anchor="middle" fill="#2e5c9e">P → X</text>
+</g>
+</g>
+<g id="nic">
+<rect x="820" y="160" width="240" height="130" rx="10" fill="#fff" stroke="#222222" stroke-width="2.5"/>
+<text x="940" y="205" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="22" font-weight="bold" font-style="normal" text-anchor="middle" fill="#222222">NIC</text>
+<text x="940" y="240" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="16" font-weight="normal" font-style="normal" text-anchor="middle" fill="#595959">DMA to physical</text>
+<text x="940" y="262" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="16" font-weight="normal" font-style="normal" text-anchor="middle" fill="#595959">address X</text>
+</g>
+<g id="dma-arrow">
+<polyline points="820,225 698,225" fill="none" stroke="#c0501a" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow-orange)"/>
+<text x="759" y="214" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="18" font-weight="bold" font-style="normal" text-anchor="middle" fill="#c0501a">DMA</text>
+</g>
+</svg>

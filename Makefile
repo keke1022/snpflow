@@ -1,4 +1,5 @@
 CFLAGS ?= -O2 -g -Wall -Wextra
+PYTHON ?= python3
 BINS = snp-probe devx-probe shared-probe verify-probe nop-probe
 
 all: $(BINS)
@@ -17,8 +18,23 @@ devx-probe: devx-probe.c
 
 clean:
 	rm -f $(BINS)
+	rm -f build/bounds-test
+	$(MAKE) -C scratch/cvm-chunk-proto clean
 
-.PHONY: all clean
+.PHONY: all clean test check
+
+# Portable checks: no NIC, GPU, kernel module, or root privileges needed.
+build/bounds-test: bounds-test.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -Werror -o $@ $<
+
+test: build/bounds-test
+	./build/bounds-test
+	$(MAKE) -C scratch/cvm-chunk-proto test
+	$(PYTHON) scratch/secure-kv-channel/secure_kv_channel.py
+
+check:
+	$(PYTHON) scripts/check-repo.py
 
 # nop-probe 需要 DPDK 的 PRM 定义，经 prm/ 垫片引入
 DPDK_MLX5 ?= $(HOME)/dpdk-stable-25.11.3/drivers/common/mlx5

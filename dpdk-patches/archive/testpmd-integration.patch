@@ -1,0 +1,48 @@
+diff --git a/app/test-pmd/meson.build b/app/test-pmd/meson.build
+index 0ba487f..6a3dc83 100644
+--- a/app/test-pmd/meson.build
++++ b/app/test-pmd/meson.build
+@@ -31,6 +31,15 @@ sources = files(
+         'util.c',
+ )
+ 
++cvm_crypto_dep = dependency('libcrypto', required: false, method: 'pkg-config')
++if cvm_crypto_dep.found()
++    sources += files('cvm_chunk_crypto.c', 'cvm_chunk_fwd.c',
++            'cvm_chunk_packet.c', 'cvm_chunk_receiver.c',
++            'cvm_chunk_wire.c')
++    ext_deps += cvm_crypto_dep
++    cflags += '-DCVM_CHUNK_OPENSSL'
++endif
++
+ if dpdk_conf.has('RTE_HAS_JANSSON')
+     ext_deps += jansson_dep
+ endif
+diff --git a/app/test-pmd/testpmd.c b/app/test-pmd/testpmd.c
+index 578ef65..a72de28 100644
+--- a/app/test-pmd/testpmd.c
++++ b/app/test-pmd/testpmd.c
+@@ -202,6 +202,9 @@ struct fwd_engine * fwd_engines[] = {
+ 	&rx_only_engine,
+ 	&tx_only_engine,
+ 	&csum_fwd_engine,
++#ifdef CVM_CHUNK_OPENSSL
++	&cvm_chunk_engine,
++#endif
+ 	&icmp_echo_engine,
+ 	&noisy_vnf_engine,
+ 	&five_tuple_swap_fwd_engine,
+diff --git a/app/test-pmd/testpmd.h b/app/test-pmd/testpmd.h
+index f239fea..3c510bb 100644
+--- a/app/test-pmd/testpmd.h
++++ b/app/test-pmd/testpmd.h
+@@ -474,6 +474,9 @@ extern struct fwd_engine flow_gen_engine;
+ extern struct fwd_engine rx_only_engine;
+ extern struct fwd_engine tx_only_engine;
+ extern struct fwd_engine csum_fwd_engine;
++#ifdef CVM_CHUNK_OPENSSL
++extern struct fwd_engine cvm_chunk_engine;
++#endif
+ extern struct fwd_engine icmp_echo_engine;
+ extern struct fwd_engine noisy_vnf_engine;
+ extern struct fwd_engine five_tuple_swap_fwd_engine;

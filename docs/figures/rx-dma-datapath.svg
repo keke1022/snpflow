@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="800" viewBox="0 0 1920 800">
+<defs>
+  <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="14" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto">
+    <path d="M0,0 L10,5 L0,10 z" fill="#2e5c9e"/></marker>
+  <marker id="arrow-orange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="14" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto">
+    <path d="M0,0 L10,5 L0,10 z" fill="#c0501a"/></marker>
+</defs>
+<rect width="1920" height="800" fill="#fff"/>
+<g id="cpu">
+<rect x="60" y="300" width="268" height="250" rx="8" fill="#fff" stroke="#2e5c9e" stroke-width="2.5"/>
+<text x="194" y="400" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="22" font-weight="bold" font-style="normal" text-anchor="middle" fill="#222222">Software (CPU)</text>
+<text x="194" y="440" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="18" font-weight="normal" font-style="normal" text-anchor="middle" fill="#222222">DPDK PMD</text>
+<text x="194" y="472" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="17" font-weight="normal" font-style="normal" text-anchor="middle" fill="#595959">polls continuously,</text>
+<text x="194" y="496" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="17" font-weight="normal" font-style="normal" text-anchor="middle" fill="#595959">no interrupts</text>
+</g>
+<g id="host-memory">
+<rect x="400" y="45" width="1090" height="720" rx="12" fill="#eceef2" stroke="none" stroke-width="1.5"/>
+<text x="430" y="92" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="20" font-weight="bold" font-style="normal" text-anchor="start" fill="#595959">Four things in host memory (everything the NIC accesses by DMA lives here)</text>
+<g id="buffers">
+<text x="460" y="140" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="18" font-weight="normal" font-style="normal" text-anchor="start" fill="#222222">A. Free buffers: a pool of memory blocks waiting for packets, typically 2 KB each</text>
+<rect x="460" y="157" width="190" height="76" rx="0" fill="#fff" stroke="#222222" stroke-width="1.5"/>
+<text x="555" y="202" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="18" font-weight="normal" font-style="normal" text-anchor="middle" fill="#595959">empty</text>
+<rect x="670" y="157" width="190" height="76" rx="0" fill="#fff" stroke="#222222" stroke-width="1.5"/>
+<text x="765" y="202" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="18" font-weight="normal" font-style="normal" text-anchor="middle" fill="#595959">empty</text>
+<rect x="880" y="157" width="190" height="76" rx="0" fill="#fce4d6" stroke="#222222" stroke-width="1.5"/>
+<text x="975" y="202" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="18" font-weight="normal" font-style="normal" text-anchor="middle" fill="#222222">packet, 1500 B</text>
+</g>
+<g id="rq">
+<text x="460" y="300" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="18" font-weight="normal" font-style="normal" text-anchor="start" fill="#222222">B. Work-request ring (RQ): each slot says “put the packet at this address” {addr, len, lkey}</text>
+<rect x="460" y="318" width="76" height="74" rx="0" fill="#fce4d6" stroke="#222222" stroke-width="1.5"/>
+<text x="498.0" y="361.0" font-family="'Courier New', 'Liberation Mono', monospace" font-size="18" font-weight="normal" font-style="normal" text-anchor="middle" fill="#222222">0</text>
+<rect x="536" y="318" width="76" height="74" rx="0" fill="#fce4d6" stroke="#222222" stroke-width="1.5"/>
+<text x="574.0" y="361.0" font-family="'Courier New', 'Liberation Mono', monospace" font-size="18" font-weight="normal" font-style="normal" text-anchor="middle" fill="#222222">1</text>
+<rect x="612" y="318" width="76" height="74" rx="0" fill="#fce4d6" stroke="#222222" stroke-width="1.5"/>
+<text x="650.0" y="361.0" font-family="'Courier New', 'Liberation Mono', monospace" font-size="18" font-weight="normal" font-style="normal" text-anchor="middle" fill="#222222">2</text>
+<rect x="688" y="318" width="76" height="74" rx="0" fill="#fff" stroke="#222222" stroke-width="1.5"/>
+<rect x="764" y="318" width="76" height="74" rx="0" fill="#fff" stroke="#222222" stroke-width="1.5"/>
+<rect x="840" y="318" width="76" height="74" rx="0" fill="#fff" stroke="#222222" stroke-width="1.5"/>
+<rect x="916" y="318" width="76" height="74" rx="0" fill="#fff" stroke="#222222" stroke-width="1.5"/>
+<rect x="992" y="318" width="76" height="74" rx="0" fill="#fff" stroke="#222222" stroke-width="1.5"/>
+</g>
+<g id="cq">
+<text x="460" y="462" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="18" font-weight="normal" font-style="normal" text-anchor="start" fill="#222222">C. Completion ring (CQ): the NIC writes one slot per received packet {len, WQE index, status, timestamp}</text>
+<rect x="460" y="485" width="76" height="74" rx="0" fill="#fce4d6" stroke="#222222" stroke-width="1.5"/>
+<text x="498.0" y="528.0" font-family="'Courier New', 'Liberation Mono', monospace" font-size="18" font-weight="normal" font-style="normal" text-anchor="middle" fill="#222222">0</text>
+<rect x="536" y="485" width="76" height="74" rx="0" fill="#fff" stroke="#222222" stroke-width="1.5"/>
+<rect x="612" y="485" width="76" height="74" rx="0" fill="#fff" stroke="#222222" stroke-width="1.5"/>
+<rect x="688" y="485" width="76" height="74" rx="0" fill="#fff" stroke="#222222" stroke-width="1.5"/>
+<rect x="764" y="485" width="76" height="74" rx="0" fill="#fff" stroke="#222222" stroke-width="1.5"/>
+<rect x="840" y="485" width="76" height="74" rx="0" fill="#fff" stroke="#222222" stroke-width="1.5"/>
+<rect x="916" y="485" width="76" height="74" rx="0" fill="#fff" stroke="#222222" stroke-width="1.5"/>
+<rect x="992" y="485" width="76" height="74" rx="0" fill="#fff" stroke="#222222" stroke-width="1.5"/>
+</g>
+<g id="doorbell-record">
+<text x="460" y="632" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="18" font-weight="normal" font-style="normal" text-anchor="start" fill="#222222">D. Doorbell record: one integer, “how far I have written into the work-request ring”</text>
+<rect x="460" y="652" width="305" height="76" rx="0" fill="#fff" stroke="#222222" stroke-width="1.5"/>
+<text x="612" y="700" font-family="'Courier New', 'Liberation Mono', monospace" font-size="22" font-weight="normal" font-style="normal" text-anchor="middle" fill="#222222">producer = 3</text>
+<text x="790" y="700" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="17" font-weight="normal" font-style="normal" text-anchor="start" fill="#595959">The NIC reads it to learn how many free buffers remain</text>
+</g>
+</g>
+<g id="nic">
+<rect x="1548" y="45" width="345" height="720" rx="10" fill="#fff" stroke="#222222" stroke-width="2.5"/>
+<text x="1720" y="98" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="22" font-weight="bold" font-style="normal" text-anchor="middle" fill="#222222">NIC</text>
+<rect x="1578" y="135" width="285" height="95" rx="4" fill="#fff" stroke="#222222" stroke-width="1.5"/>
+<text x="1720" y="172" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="20" font-weight="bold" font-style="normal" text-anchor="middle" fill="#222222">Doorbell register</text>
+<text x="1720" y="202" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="15" font-weight="normal" font-style="normal" text-anchor="middle" fill="#595959">on the NIC; CPU writes it via MMIO</text>
+<rect x="1578" y="262" width="285" height="112" rx="4" fill="#fff" stroke="#222222" stroke-width="1.5"/>
+<text x="1720" y="297" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="20" font-weight="bold" font-style="normal" text-anchor="middle" fill="#222222">Address book (mkey table)</text>
+<text x="1720" y="327" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="16" font-weight="normal" font-style="normal" text-anchor="middle" fill="#595959">lkey → which physical pages</text>
+<text x="1720" y="352" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="16" font-weight="normal" font-style="normal" text-anchor="middle" fill="#595959">a memory region maps to</text>
+<rect x="1578" y="408" width="285" height="105" rx="4" fill="#fff" stroke="#222222" stroke-width="1.5" stroke-dasharray="8,6"/>
+<text x="1720" y="443" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="20" font-weight="bold" font-style="normal" text-anchor="middle" fill="#222222">DMA engine</text>
+<text x="1720" y="473" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="16" font-weight="normal" font-style="normal" text-anchor="middle" fill="#595959">reads/writes host memory after</text>
+<text x="1720" y="497" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="16" font-weight="normal" font-style="normal" text-anchor="middle" fill="#595959">translating via the address book</text>
+<text x="1720" y="600" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="20" font-weight="normal" font-style="normal" text-anchor="middle" fill="#595959">Wire  ↓ ↑</text>
+</g>
+<g id="cpu-arrows">
+<polyline points="328,355 452,355" fill="none" stroke="#2e5c9e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow-blue)"/>
+<circle cx="392" cy="330" r="12" fill="#fff" stroke="#2e5c9e" stroke-width="2"/>
+<text x="392" y="336" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="16" font-weight="bold" font-style="normal" text-anchor="middle" fill="#2e5c9e">1</text>
+<polyline points="194,550 194,690 452,690" fill="none" stroke="#2e5c9e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow-blue)"/>
+<circle cx="222" cy="620" r="12" fill="#fff" stroke="#2e5c9e" stroke-width="2"/>
+<text x="222" y="626" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="16" font-weight="bold" font-style="normal" text-anchor="middle" fill="#2e5c9e">2</text>
+<polyline points="452,522 336,522" fill="none" stroke="#2e5c9e" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow-blue)"/>
+<circle cx="392" cy="498" r="12" fill="#fff" stroke="#2e5c9e" stroke-width="2"/>
+<text x="392" y="504" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="16" font-weight="bold" font-style="normal" text-anchor="middle" fill="#2e5c9e">6</text>
+</g>
+<g id="nic-arrows">
+<polyline points="1548,195 1078,195" fill="none" stroke="#c0501a" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow-orange)"/>
+<circle cx="1105" cy="168" r="12" fill="#fff" stroke="#c0501a" stroke-width="2"/>
+<text x="1105" y="174" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="16" font-weight="bold" font-style="normal" text-anchor="middle" fill="#c0501a">4</text>
+<text x="1125" y="174" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="18" font-weight="bold" font-style="normal" text-anchor="start" fill="#c0501a">DMA writes the packet into a buffer</text>
+<polyline points="1548,355 1078,355" fill="none" stroke="#c0501a" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow-orange)"/>
+<circle cx="1105" cy="331" r="12" fill="#fff" stroke="#c0501a" stroke-width="2"/>
+<text x="1105" y="337" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="16" font-weight="bold" font-style="normal" text-anchor="middle" fill="#c0501a">3</text>
+<text x="1125" y="326" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="18" font-weight="bold" font-style="normal" text-anchor="start" fill="#c0501a">DMA reads the work requests</text>
+<text x="1125" y="347" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="18" font-weight="bold" font-style="normal" text-anchor="start" fill="#c0501a">and the doorbell record</text>
+<text x="1105" y="384" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="16" font-weight="normal" font-style="italic" text-anchor="start" fill="#595959">circular: wraps around at the end</text>
+<polyline points="1548,522 1078,522" fill="none" stroke="#c0501a" stroke-width="2.5" stroke-linejoin="round" marker-end="url(#arrow-orange)"/>
+<circle cx="1105" cy="495" r="12" fill="#fff" stroke="#c0501a" stroke-width="2"/>
+<text x="1105" y="501" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="16" font-weight="bold" font-style="normal" text-anchor="middle" fill="#c0501a">5</text>
+<text x="1125" y="501" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="18" font-weight="bold" font-style="normal" text-anchor="start" fill="#c0501a">DMA writes one completion entry</text>
+<text x="1105" y="551" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="16" font-weight="normal" font-style="italic" text-anchor="start" fill="#595959">each slot is 64 bytes, called a CQE</text>
+</g>
+</svg>

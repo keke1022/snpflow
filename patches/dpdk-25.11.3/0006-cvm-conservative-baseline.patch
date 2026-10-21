@@ -1,0 +1,1356 @@
+From: CVM DPDK prototype <cvm@example.invalid>
+Date: Tue, 20 Oct 2026 12:00:00 +0000
+Subject: [PATCH] mlx5: consolidate the validated conservative CVM baseline
+
+Export the exact tree delta from fc1a57cc5aa699721d5b4496ded90a0cdfec518f
+through 8a3a43b90c30122cf65710b3b56c17f9c0678bef. This includes scalar-SPRQ
+restrictions, isolated RX/TX tests, fail-stop completion validation, fd
+ownership fixes, fail-closed allocation, and DMA UMEM page-size alignment.
+Intermediate experiments and reversions are folded into their final result.
+Recovered read-only from the powered-off validation VM on 2026-10-20.
+
+diff --git a/app/test-pmd/testpmd.c b/app/test-pmd/testpmd.c
+index 3f43760..ffcadf1 100644
+--- a/app/test-pmd/testpmd.c
++++ b/app/test-pmd/testpmd.c
+@@ -1149,7 +1149,10 @@ struct cvm_shared_alloc_req {
+ 
+ #define CVM_SHARED_IOC_ALLOC _IOWR('C', 0x01, struct cvm_shared_alloc_req)
+ 
+-/* 返回映射地址，失败返回 NULL（表示本机不是机密虚拟机，走原路） */
++/*
++ * 返回映射地址；设备不存在返回 NULL（非 CVM，可走原路）；设备存在但
++ * 初始化失败返回 MAP_FAILED（CVM 配置错误，禁止回退到私有内存）。
++ */
+ static void *
+ cvm_shared_get(size_t size)
+ {
+@@ -1171,22 +1174,39 @@ cvm_shared_get(size_t size)
+ 	int dev;
+ 
+ 	dev = open(CVM_SHARED_DEV, O_RDWR);
+-	if (dev < 0)
+-		return NULL;                    /* 非机密虚拟机 */
++	if (dev < 0) {
++		if (errno == ENOENT || errno == ENODEV)
++			return NULL;                /* 明确没有 cvm_shared */
++		TESTPMD_LOG(ERR, "cvm_shared: 打开 %s 失败: %s\n",
++			    CVM_SHARED_DEV, strerror(errno));
++		rte_errno = errno;
++		return MAP_FAILED;
++	}
+ 	if (ioctl(dev, CVM_SHARED_IOC_ALLOC, &req) < 0) {
++		int saved_errno = errno;
++
+ 		TESTPMD_LOG(ERR, "cvm_shared: 申请 %zu 字节失败: %s\n",
+-			    size, strerror(errno));
++			    size, strerror(saved_errno));
+ 		close(dev);
+-		return NULL;
++		errno = saved_errno;
++		rte_errno = saved_errno;
++		return MAP_FAILED;
+ 	}
+ 	close(dev);
+ 
+ 	va = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, req.fd, 0);
+ 	if (va == MAP_FAILED) {
+-		TESTPMD_LOG(ERR, "cvm_shared: 映射失败: %s\n", strerror(errno));
++		int saved_errno = errno;
++
++		TESTPMD_LOG(ERR, "cvm_shared: 映射失败: %s\n",
++			    strerror(saved_errno));
+ 		close(req.fd);
+-		return NULL;
++		errno = saved_errno;
++		rte_errno = saved_errno;
++		return MAP_FAILED;
+ 	}
++	/* VMA 已持有 dma-buf 引用，不需要额外保留分配时返回的 fd。 */
++	close(req.fd);
+ 
+ 	/*
+ 	 * 登记进 EAL，否则 mlx5 的 mlx5_mr_create() 里
+@@ -1197,9 +1217,11 @@ cvm_shared_get(size_t size)
+ 	n_pages = size / page_sz;
+ 	iovas = malloc(sizeof(*iovas) * n_pages);
+ 	if (iovas == NULL) {
++		TESTPMD_LOG(ERR, "cvm_shared: 分配 IOVA 数组失败\n");
+ 		munmap(va, size);
+-		close(req.fd);
+-		return NULL;
++		errno = ENOMEM;
++		rte_errno = ENOMEM;
++		return MAP_FAILED;
+ 	}
+ 	for (i = 0; i < n_pages; i++)
+ 		iovas[i] = (rte_iova_t)(uintptr_t)va + (rte_iova_t)i * page_sz;
+@@ -1210,16 +1232,13 @@ cvm_shared_get(size_t size)
+ 			    rte_strerror(rte_errno), va, size, page_sz, n_pages);
+ 		free(iovas);
+ 		munmap(va, size);
+-		close(req.fd);
+-		return NULL;
++		return MAP_FAILED;
+ 	}
+ 	free(iovas);
+ 
+ 	TESTPMD_LOG(INFO,
+ 		    "cvm_shared: 外部内存就绪 va=%p size=%zu（IOVA=VA）\n",
+ 		    va, size);
+-	/* fd 故意不关：dma-buf 引用计数要等 munmap 之后才归零，
+-	 * 但保留 fd 可以让区域在进程生命周期内稳定存在。 */
+ 	return va;
+ }
+ 
+@@ -1249,6 +1268,11 @@ setup_extbuf(uint32_t nb_mbufs, uint16_t mbuf_sz, unsigned int socket_id,
+ 	 * extmem_register 产生零碎区间。
+ 	 */
+ 	cvm_base = cvm_shared_get((size_t)EXTBUF_ZONE_SIZE * zone_num);
++	if (cvm_base == MAP_FAILED) {
++		free(xmem);
++		*ext_mem = NULL;
++		return 0;
++	}
+ 	if (cvm_base != NULL) {
+ 		for (ext_num = 0; ext_num < zone_num; ext_num++) {
+ 			struct rte_pktmbuf_extmem *xseg = xmem + ext_num;
+diff --git a/app/test/meson.build b/app/test/meson.build
+index 8302d16..7baee53 100644
+--- a/app/test/meson.build
++++ b/app/test/meson.build
+@@ -132,6 +132,8 @@ source_file_deps = {
+     'test_memzone.c': [],
+     'test_meter.c': ['meter'],
+     'test_metrics.c': ['metrics'],
++    'test_mlx5_rx_validate.c': [],
++    'test_mlx5_tx_validate.c': [],
+     'test_mp_secondary.c': ['hash'],
+     'test_net_ether.c': ['net'],
+     'test_net_ip6.c': ['net'],
+diff --git a/app/test/test_mlx5_rx_validate.c b/app/test/test_mlx5_rx_validate.c
+new file mode 100644
+index 0000000..e723567
+--- /dev/null
++++ b/app/test/test_mlx5_rx_validate.c
+@@ -0,0 +1,174 @@
++/* SPDX-License-Identifier: BSD-3-Clause
++ * Copyright (c) 2026
++ */
++
++#include <stdint.h>
++
++#include "test.h"
++#include "../../drivers/net/mlx5/mlx5_rx_validate.h"
++
++static int
++test_compressed_budget(void)
++{
++	uint32_t budget = UINT32_MAX;
++
++	/* Regression: rq_pi was advanced by 3, then nocmp_n was subtracted again. */
++	TEST_ASSERT(mlx5_rx_comp_budget_calc(256, 0, 256, 0, 4, 3, &budget),
++		"budget calculation rejected a valid one-entry remainder");
++	TEST_ASSERT_EQUAL(budget, 1,
++		"posted=4 and consumed=3 must leave exactly one entry");
++
++	/* Regression: MPRQ capacities were narrowed to uint16_t before taking min. */
++	TEST_ASSERT(mlx5_rx_comp_budget_calc(256, 0, 131072, 0, 65536, 0,
++						&budget),
++		"large MPRQ capacity was rejected");
++	TEST_ASSERT_EQUAL(budget, 256,
++		"CQ capacity must bound a large MPRQ capacity without truncation");
++
++	TEST_ASSERT(mlx5_rx_comp_budget_calc(256, 200, 512, 400, 100, 0,
++						&budget),
++		"ring-tail budget was rejected");
++	TEST_ASSERT_EQUAL(budget, 56,
++		"CQ tail must be the limiting contiguous capacity");
++
++	TEST_ASSERT(!mlx5_rx_comp_budget_calc(256, 0, 256, 0, 4, 5,
++						 &budget),
++		"consuming more entries than posted must be rejected");
++	TEST_ASSERT_EQUAL(budget, 0,
++		"failed calculation must clear the output budget");
++
++	TEST_ASSERT(!mlx5_rx_comp_budget_calc(256, 257, 256, 0, 4, 0,
++						 &budget),
++		"CQ offset beyond the array must be rejected");
++	TEST_ASSERT(!mlx5_rx_comp_budget_calc(256, 0, 256, 257, 4, 0,
++						 &budget),
++		"elts offset beyond the array must be rejected");
++	TEST_ASSERT(!mlx5_rx_comp_budget_calc(256, 0, 256, 0, 0, 0,
++						 &budget),
++		"zero posted capacity must be rejected");
++	TEST_ASSERT(!mlx5_rx_comp_budget_calc(256, 0, 256, 0, 4, 0, NULL),
++		"NULL output pointer must be rejected");
++
++	TEST_ASSERT(mlx5_rx_comp_budget_calc(UINT32_MAX, 0, UINT32_MAX, 0,
++						UINT32_MAX, 0, &budget),
++		"full uint32_t capacity must not overflow");
++	TEST_ASSERT_EQUAL(budget, UINT32_MAX,
++		"full uint32_t capacity changed unexpectedly");
++	return TEST_SUCCESS;
++}
++
++static int
++test_compressed_count(void)
++{
++	uint16_t count = UINT16_C(0xa5a5);
++
++	TEST_ASSERT(mlx5_rx_mcqe_count_valid(1, 64, 0, &count),
++		"count one was rejected");
++	TEST_ASSERT_EQUAL(count, 1, "validated count was not returned");
++
++	TEST_ASSERT(mlx5_rx_mcqe_count_valid(34, 64, 30, &count),
++		"count exactly filling the budget was rejected");
++	TEST_ASSERT_EQUAL(count, 34, "exact-fill count was not returned");
++
++	count = UINT16_C(0xa5a5);
++	TEST_ASSERT(!mlx5_rx_mcqe_count_valid(35, 64, 30, &count),
++		"count exceeding accumulated budget by one was accepted");
++	TEST_ASSERT_EQUAL(count, UINT16_C(0xa5a5),
++		"failed validation must not modify output count");
++
++	TEST_ASSERT(!mlx5_rx_mcqe_count_valid(0, 64, 0, &count),
++		"zero count was accepted");
++	TEST_ASSERT(!mlx5_rx_mcqe_count_valid(UINT32_C(0x10001), 64, 0,
++						&count),
++		"32-bit count that truncates to one was accepted");
++	TEST_ASSERT(!mlx5_rx_mcqe_count_valid(UINT32_C(0x10000), UINT32_MAX,
++						0, &count),
++		"count wider than the uint16_t consumer was accepted");
++
++	TEST_ASSERT(mlx5_rx_mcqe_count_valid(UINT16_MAX, UINT32_C(65536), 0,
++					       &count),
++		"UINT16_MAX count was rejected with sufficient budget");
++	TEST_ASSERT_EQUAL(count, UINT16_MAX,
++		"UINT16_MAX count was not returned");
++
++	TEST_ASSERT(!mlx5_rx_mcqe_count_valid(1, UINT32_C(65536), UINT16_MAX,
++						&count),
++		"uint16_t accumulated count overflow was accepted");
++	TEST_ASSERT(!mlx5_rx_mcqe_count_valid(1, 64, 65, &count),
++		"accumulated count beyond budget was accepted");
++	TEST_ASSERT(!mlx5_rx_mcqe_count_valid(1, 64, 0, NULL),
++		"NULL output pointer must be rejected");
++	return TEST_SUCCESS;
++}
++
++static int
++test_cvm_scalar_cqe_guard(void)
++{
++	enum mlx5_rx_cvm_guard_result result;
++
++	result = mlx5_rx_cvm_cqe_validate(false, true, true, UINT32_MAX,
++					  0, true, UINT8_MAX);
++	TEST_ASSERT_EQUAL(result, MLX5_RX_CVM_GUARD_OK,
++		"disabled guard changed non-CVM behavior");
++
++	result = mlx5_rx_cvm_cqe_validate(true, true, false, 64, 2048,
++					  false, 1);
++	TEST_ASSERT_EQUAL(result, MLX5_RX_CVM_GUARD_MPRQ,
++		"CVM MPRQ CQE was accepted");
++
++	result = mlx5_rx_cvm_cqe_validate(true, false, true, 64, 2048,
++					  false, 1);
++	TEST_ASSERT_EQUAL(result, MLX5_RX_CVM_GUARD_COMPRESSED,
++		"compressed CQE was accepted in CVM mode");
++
++	result = mlx5_rx_cvm_cqe_validate(true, false, false, 2049, 2048,
++					  false, 1);
++	TEST_ASSERT_EQUAL(result, MLX5_RX_CVM_GUARD_LENGTH,
++		"byte count beyond the posted buffer was accepted");
++
++	result = mlx5_rx_cvm_cqe_validate(true, false, false, 2048, 2048,
++					  false, 1);
++	TEST_ASSERT_EQUAL(result, MLX5_RX_CVM_GUARD_OK,
++		"byte count exactly filling the posted buffer was rejected");
++
++	result = mlx5_rx_cvm_cqe_validate(true, false, false, 3, 2048,
++					  true, 1);
++	TEST_ASSERT_EQUAL(result, MLX5_RX_CVM_GUARD_LENGTH,
++		"byte count shorter than the retained CRC was accepted");
++
++	result = mlx5_rx_cvm_cqe_validate(true, false, false, 4, 2048,
++					  true, 1);
++	TEST_ASSERT_EQUAL(result, MLX5_RX_CVM_GUARD_OK,
++		"minimum byte count containing the retained CRC was rejected");
++
++	result = mlx5_rx_cvm_cqe_validate(true, false, false, 64, 0,
++					  false, 1);
++	TEST_ASSERT_EQUAL(result, MLX5_RX_CVM_GUARD_LENGTH,
++		"zero posted capacity was accepted");
++
++	result = mlx5_rx_cvm_cqe_validate(true, false, false, 64, 2048,
++					  false, 2);
++	TEST_ASSERT_EQUAL(result, MLX5_RX_CVM_GUARD_LRO,
++		"LRO CQE was accepted in the scalar CVM profile");
++
++	result = mlx5_rx_cvm_cqe_validate(true, false, false, 64, 2048,
++					  false, 0);
++	TEST_ASSERT_EQUAL(result, MLX5_RX_CVM_GUARD_OK,
++		"ordinary scalar SPRQ CQE was rejected");
++	return TEST_SUCCESS;
++}
++
++static int
++test_mlx5_rx_validate(void)
++{
++	if (test_compressed_budget() != TEST_SUCCESS)
++		return TEST_FAILED;
++	if (test_compressed_count() != TEST_SUCCESS)
++		return TEST_FAILED;
++	if (test_cvm_scalar_cqe_guard() != TEST_SUCCESS)
++		return TEST_FAILED;
++	return TEST_SUCCESS;
++}
++
++REGISTER_FAST_TEST(mlx5_rx_validate_autotest, true, true,
++		   test_mlx5_rx_validate);
+diff --git a/app/test/test_mlx5_tx_validate.c b/app/test/test_mlx5_tx_validate.c
+new file mode 100644
+index 0000000..2bb8153
+--- /dev/null
++++ b/app/test/test_mlx5_tx_validate.c
+@@ -0,0 +1,73 @@
++/* SPDX-License-Identifier: BSD-3-Clause
++ * Copyright (c) 2026
++ */
++
++#include <stdint.h>
++
++#include "test.h"
++#include "../../drivers/net/mlx5/mlx5_tx_validate.h"
++
++static int
++test_fcq_encoding(void)
++{
++	uint32_t entry;
++
++	entry = mlx5_tx_fcq_make(UINT16_C(0x1234), UINT16_C(0xabcd));
++	TEST_ASSERT_EQUAL(mlx5_tx_fcq_elts_head(entry), UINT16_C(0x1234),
++		"elts head changed while packing FCQ entry");
++	TEST_ASSERT_EQUAL(mlx5_tx_fcq_wqe_counter(entry), UINT16_C(0xabcd),
++		"WQE counter changed while packing FCQ entry");
++
++	entry = mlx5_tx_fcq_make(UINT16_MAX, UINT16_MAX);
++	TEST_ASSERT_EQUAL(mlx5_tx_fcq_elts_head(entry), UINT16_MAX,
++		"maximum elts head did not round-trip");
++	TEST_ASSERT_EQUAL(mlx5_tx_fcq_wqe_counter(entry), UINT16_MAX,
++		"maximum WQE counter did not round-trip");
++	return TEST_SUCCESS;
++}
++
++static int
++test_cvm_tx_cqe_guard(void)
++{
++	const uint32_t entry = mlx5_tx_fcq_make(17, UINT16_C(0xfffe));
++	enum mlx5_tx_cvm_guard_result result;
++
++	result = mlx5_tx_cvm_cqe_validate(false, 7, 7, entry, 0);
++	TEST_ASSERT_EQUAL(result, MLX5_TX_CVM_GUARD_OK,
++		"disabled guard changed non-CVM behavior");
++
++	result = mlx5_tx_cvm_cqe_validate(true, 7, 7, entry,
++					  UINT16_C(0xfffe));
++	TEST_ASSERT_EQUAL(result, MLX5_TX_CVM_GUARD_NO_REQUEST,
++		"CQE without a software completion request was accepted");
++
++	result = mlx5_tx_cvm_cqe_validate(true, 7, 8, entry,
++					  UINT16_C(0xffff));
++	TEST_ASSERT_EQUAL(result, MLX5_TX_CVM_GUARD_WQE_COUNTER,
++		"unexpected WQE counter was accepted");
++
++	result = mlx5_tx_cvm_cqe_validate(true, 7, 8, entry,
++					  UINT16_C(0xfffe));
++	TEST_ASSERT_EQUAL(result, MLX5_TX_CVM_GUARD_OK,
++		"exact software-recorded WQE counter was rejected");
++
++	/* cq_pi/cq_ci are rolling uint16_t counters; inequality is sufficient. */
++	result = mlx5_tx_cvm_cqe_validate(true, UINT16_MAX, 0, entry,
++					  UINT16_C(0xfffe));
++	TEST_ASSERT_EQUAL(result, MLX5_TX_CVM_GUARD_OK,
++		"valid completion was rejected across CQ counter wrap");
++	return TEST_SUCCESS;
++}
++
++static int
++test_mlx5_tx_validate(void)
++{
++	if (test_fcq_encoding() != TEST_SUCCESS)
++		return TEST_FAILED;
++	if (test_cvm_tx_cqe_guard() != TEST_SUCCESS)
++		return TEST_FAILED;
++	return TEST_SUCCESS;
++}
++
++REGISTER_FAST_TEST(mlx5_tx_validate_autotest, true, true,
++		   test_mlx5_tx_validate);
+diff --git a/drivers/common/mlx5/linux/mlx5_common_os.h b/drivers/common/mlx5/linux/mlx5_common_os.h
+index df5c06f..042de32 100644
+--- a/drivers/common/mlx5/linux/mlx5_common_os.h
++++ b/drivers/common/mlx5/linux/mlx5_common_os.h
+@@ -7,6 +7,7 @@
+ 
+ #include <stdio.h>
+ #include <malloc.h>
++#include <unistd.h>
+ 
+ #include <rte_compat.h>
+ #include <rte_pci.h>
+@@ -228,8 +229,10 @@ mlx5_os_umem_reg(void *ctx, void *addr, size_t size, uint32_t access)
+ 	 * 每次分配单独注册一个 umem，其起点即本次分配的地址，因此
+ 	 * DevX 创建命令里的 umem_offset 仍然保持 0，命令结构不变。
+ 	 */
+-	if (mlx5_cvm_shared_lookup(addr, &fd, &offset)) {
++	if (mlx5_cvm_shared_lookup_dup(addr, &fd, &offset)) {
+ 		struct mlx5dv_devx_umem_in umem_in;
++		struct mlx5dv_devx_umem *umem;
++		int saved_errno;
+ 
+ 		memset(&umem_in, 0, sizeof(umem_in));
+ 		umem_in.addr = (void *)(uintptr_t)offset;
+@@ -239,7 +242,11 @@ mlx5_os_umem_reg(void *ctx, void *addr, size_t size, uint32_t access)
+ 		umem_in.pgsz_bitmap = ~0ULL;
+ 		umem_in.comp_mask = MLX5DV_UMEM_MASK_DMABUF;
+ 		umem_in.dmabuf_fd = fd;
+-		return mlx5_glue->devx_umem_reg_ex(ctx, &umem_in);
++		umem = mlx5_glue->devx_umem_reg_ex(ctx, &umem_in);
++		saved_errno = errno;
++		close(fd);
++		errno = saved_errno;
++		return umem;
+ 	}
+ 	return mlx5_glue->devx_umem_reg(ctx, addr, size, access);
+ }
+diff --git a/drivers/common/mlx5/linux/mlx5_common_verbs.c b/drivers/common/mlx5/linux/mlx5_common_verbs.c
+index f9e5b61..2ab71b4 100644
+--- a/drivers/common/mlx5/linux/mlx5_common_verbs.c
++++ b/drivers/common/mlx5/linux/mlx5_common_verbs.c
+@@ -185,7 +185,9 @@ mlx5_common_devx_reg_mr_dmabuf(void *pd, void *addr, size_t length,
+ 	void *devx_ctx;
+ 	uint32_t pdn;
+ 	size_t offset = 0;
++	size_t page_size;
+ 	int fd = -1;
++	int saved_errno;
+ 
+ 	/*
+ 	 * reg_mr 回调只传入 pd，拿不到 pdn。Linux 上 pd 是 struct ibv_pd，
+@@ -203,7 +205,13 @@ mlx5_common_devx_reg_mr_dmabuf(void *pd, void *addr, size_t length,
+ 	pdn = dv_pd.pdn;
+ 	devx_ctx = ibv_pd->context;
+ 
+-	if (!mlx5_cvm_shared_lookup(addr, &fd, &offset)) {
++	page_size = rte_mem_page_size();
++	if (page_size == (size_t)-1) {
++		DRV_LOG(ERR, "无法取得 mkey 页大小");
++		return -1;
++	}
++
++	if (!mlx5_cvm_shared_lookup_dup(addr, &fd, &offset)) {
+ 		DRV_LOG(ERR,
+ 			"地址 %p 不在任何 cvm_shared 区域内，无法以 dma-buf 注册",
+ 			addr);
+@@ -217,14 +225,22 @@ mlx5_common_devx_reg_mr_dmabuf(void *pd, void *addr, size_t length,
+ 			 (haswell_broadwell_cpu ? 0 :
+ 			  IBV_ACCESS_RELAXED_ORDERING);
+ 	/*
+-	 * pgsz_bitmap 必须非 0。置 0 时 rdma-core 返回 EINVAL，
+-	 * 极易被误判成「不支持 dma-buf」。
++	 * mkey 创建路径用 rte_mem_page_size() 填 log_page_size。这里若允许
++	 * 任意页大小，内核会按长度与 DMA 对齐选择更大的 UMEM 页；例如
++	 * 长度可被 8 KiB 整除时会选择 8 KiB，而 mkey 仍声明 4 KiB，固件
++	 * 会拒绝 CREATE_MKEY。只允许与 mkey 相同的页大小，保持两者一致。
++	 *
++	 * pgsz_bitmap 的每个置位代表一个可选页大小，因此 page_size 本身
++	 * 就是仅允许该页大小的位图（页大小必须为 2 的幂）。
+ 	 */
+-	umem_in.pgsz_bitmap = ~0ULL;
++	umem_in.pgsz_bitmap = page_size;
+ 	umem_in.comp_mask = MLX5DV_UMEM_MASK_DMABUF;
+ 	umem_in.dmabuf_fd = fd;
+ 
+ 	umem = mlx5_glue->devx_umem_reg_ex(devx_ctx, &umem_in);
++	saved_errno = errno;
++	close(fd);
++	errno = saved_errno;
+ 	if (umem == NULL) {
+ 		DRV_LOG(ERR, "devx_umem_reg_ex 失败 (addr=%p len=%zu fd=%d): %s",
+ 			addr, length, fd, strerror(errno));
+diff --git a/drivers/common/mlx5/linux/mlx5_cvm_shared.c b/drivers/common/mlx5/linux/mlx5_cvm_shared.c
+index 4f34cd6..c887040 100644
+--- a/drivers/common/mlx5/linux/mlx5_cvm_shared.c
++++ b/drivers/common/mlx5/linux/mlx5_cvm_shared.c
+@@ -65,8 +65,20 @@ struct cvm_chunk {
+ 	struct cvm_chunk *next;
+ };
+ 
++/*
++ * 初始化状态。必须是粘性的：一旦判定为永久失败，后续设备探测
++ * 也要失败，不能静默落回私有内存 —— 那会让一部分 DMA 内存位于
++ * 私有页上，失败推迟到数据面。
++ */
++enum cvm_state {
++	CVM_UNINIT = 0,   /* 尚未初始化 */
++	CVM_NOT_CVM,      /* 确认非机密虚拟机，走原路 */
++	CVM_ENABLED,      /* 严格模式已就绪 */
++	CVM_FAILED,       /* 检测到 cvm_shared 但初始化失败，永久失败 */
++};
++
+ static struct {
+-	bool inited;
++	enum cvm_state state;
+ 	bool enabled;          /* CVM 严格模式 */
+ 	void *base;
+ 	size_t len;
+@@ -161,16 +173,32 @@ mlx5_cvm_shared_init(size_t size)
+ {
+ 	int fd, ret;
+ 
+-	if (cvm.inited)
++	/* 状态是粘性的：失败一次之后，后续探测也必须失败 */
++	switch (cvm.state) {
++	case CVM_ENABLED:
++	case CVM_NOT_CVM:
+ 		return 0;
+-	cvm.inited = true;
++	case CVM_FAILED:
++		DRV_LOG(ERR,
++			"共享 DMA 内存此前初始化失败，本进程不再尝试。"
++			"继续使用私有内存必然在注册阶段失败。");
++		return -ENODEV;
++	case CVM_UNINIT:
++		break;
++	}
+ 
+-	/*
+-	 * 模式在此处确定一次，之后不再改变。
+-	 */
+ 	fd = open(CVM_SHARED_DEV, O_RDWR);
+ 	if (fd < 0) {
++		ret = errno;
++		if (ret != ENOENT && ret != ENODEV) {
++			DRV_LOG(ERR, "打开 %s 失败: %s；拒绝回退到私有内存",
++				CVM_SHARED_DEV, strerror(ret));
++			cvm.state = CVM_FAILED;
++			cvm.enabled = false;
++			return -ret;
++		}
+ 		DRV_LOG(DEBUG, "未检测到 %s，按非 CVM 环境运行", CVM_SHARED_DEV);
++		cvm.state = CVM_NOT_CVM;
+ 		cvm.enabled = false;
+ 		return 0;
+ 	}
+@@ -179,12 +207,14 @@ mlx5_cvm_shared_init(size_t size)
+ 	ret = cvm_region_create(size ? size : CVM_DEFAULT_REGION_SIZE);
+ 	if (ret != 0) {
+ 		/*
+-		 * 检测到 cvm_shared 却建不起共享区，是致命错误：
+-		 * 继续用普通内存必然在注册阶段失败，不如就地报错。
++		 * 检测到 cvm_shared 却建不起共享区，是致命且不可恢复的：
++		 * 标记为永久失败，后续设备探测一并拒绝。
+ 		 */
+ 		DRV_LOG(ERR, "检测到 cvm_shared 但共享区创建失败，无法继续");
++		cvm.state = CVM_FAILED;
+ 		return ret;
+ 	}
++	cvm.state = CVM_ENABLED;
+ 	cvm.enabled = true;
+ 	DRV_LOG(INFO, "进入 CVM 严格模式：所有 DMA 内存只从共享区分配");
+ 	return 0;
+@@ -371,13 +401,21 @@ cvm_kernel_lookup(const void *addr, int *fd, size_t *offset)
+ 	return ok;
+ }
+ 
+-RTE_EXPORT_INTERNAL_SYMBOL(mlx5_cvm_shared_lookup)
++RTE_EXPORT_INTERNAL_SYMBOL(mlx5_cvm_shared_lookup_dup)
+ bool
+-mlx5_cvm_shared_lookup(const void *addr, int *fd, size_t *offset)
++mlx5_cvm_shared_lookup_dup(const void *addr, int *fd, size_t *offset)
+ {
+ 	if (mlx5_cvm_shared_contains(addr)) {
+-		if (fd != NULL)
+-			*fd = cvm.fd;
++		if (fd != NULL) {
++			int new_fd = fcntl(cvm.fd, F_DUPFD_CLOEXEC, 0);
++
++			if (new_fd < 0) {
++				DRV_LOG(ERR, "复制 cvm_shared dma-buf fd 失败: %s",
++					strerror(errno));
++				return false;
++			}
++			*fd = new_fd;
++		}
+ 		if (offset != NULL)
+ 			*offset = (uintptr_t)addr - (uintptr_t)cvm.base;
+ 		return true;
+diff --git a/drivers/common/mlx5/mlx5_cvm_shared.h b/drivers/common/mlx5/mlx5_cvm_shared.h
+index 589fa9c..754715b 100644
+--- a/drivers/common/mlx5/mlx5_cvm_shared.h
++++ b/drivers/common/mlx5/mlx5_cvm_shared.h
+@@ -72,13 +72,14 @@ __rte_internal
+ bool mlx5_cvm_shared_contains(const void *addr);
+ 
+ /**
+- * 查找 addr 所属区域的 dma-buf fd 与区内偏移。
++ * 查找 addr 所属区域的 dma-buf fd 与区内偏移，并返回一个新 fd。
+  *
+  * MR 注册与 umem 注册都需要它：回调只拿得到虚拟地址，
+  * 而 devx_umem_reg_ex 需要 (fd, 偏移)。
++ * 成功且 fd 非 NULL 时，调用者拥有返回的 fd，必须 close()。
+  */
+ __rte_internal
+-bool mlx5_cvm_shared_lookup(const void *addr, int *fd, size_t *offset);
++bool mlx5_cvm_shared_lookup_dup(const void *addr, int *fd, size_t *offset);
+ 
+ /**
+  * 对共享区做 rte_dev_dma_map，预先建立 MR。
+@@ -99,8 +100,8 @@ static inline void *mlx5_cvm_shared_alloc(size_t size, size_t align)
+ static inline void mlx5_cvm_shared_free(void *addr) { (void)addr; }
+ static inline bool mlx5_cvm_shared_contains(const void *addr)
+ { (void)addr; return false; }
+-static inline bool mlx5_cvm_shared_lookup(const void *addr, int *fd,
+-					  size_t *offset)
++static inline bool mlx5_cvm_shared_lookup_dup(const void *addr, int *fd,
++					      size_t *offset)
+ { (void)addr; (void)fd; (void)offset; return false; }
+ static inline int mlx5_cvm_shared_dma_map(struct rte_device *dev)
+ { (void)dev; return 0; }
+diff --git a/drivers/net/mlx5/mlx5_devx.c b/drivers/net/mlx5/mlx5_devx.c
+index f10494b..8bb82f3 100644
+--- a/drivers/net/mlx5/mlx5_devx.c
++++ b/drivers/net/mlx5/mlx5_devx.c
+@@ -17,6 +17,7 @@
+ #include <mlx5_devx_cmds.h>
+ #include <mlx5_common_devx.h>
+ #include <mlx5_malloc.h>
++#include <mlx5_cvm_shared.h>
+ 
+ #include "mlx5.h"
+ #include "mlx5_common_os.h"
+@@ -439,10 +440,16 @@ mlx5_rxq_create_devx_cq_resources(struct mlx5_rxq_priv *rxq)
+ 	uint32_t log_cqe_n;
+ 	uint16_t event_nums[1] = { 0 };
+ 	int ret = 0;
++	bool cvm_guard = mlx5_cvm_shared_enabled();
+ 
+ 	if (rxq_ctrl->started)
+ 		return 0;
+-	if (priv->config.cqe_comp && !rxq_data->hw_timestamp &&
++	if (priv->config.cqe_comp && cvm_guard)
++		DRV_LOG(INFO,
++			"Port %u Rx CQE compression disabled in CVM strict mode.",
++			port_id);
++	if (priv->config.cqe_comp && !cvm_guard &&
++	    !rxq_data->hw_timestamp &&
+ 	    !rxq_data->lro) {
+ 		cq_attr.cqe_comp_en = 1u;
+ 		cq_attr.cqe_comp_layout = priv->config.enh_cqe_comp;
+diff --git a/drivers/net/mlx5/mlx5_rx.c b/drivers/net/mlx5/mlx5_rx.c
+index 1a7387e..2b76e47 100644
+--- a/drivers/net/mlx5/mlx5_rx.c
++++ b/drivers/net/mlx5/mlx5_rx.c
+@@ -29,6 +29,7 @@
+ #include "mlx5_rxtx.h"
+ #include "mlx5_devx.h"
+ #include "mlx5_rx.h"
++#include "mlx5_rx_validate.h"
+ #ifdef HAVE_MLX5_MSTFLINT
+ #include <mstflint/mtcr.h>
+ #endif
+@@ -496,6 +497,7 @@ mlx5_rxq_initialize(struct mlx5_rxq_data *rxq)
+ 			.lkey = lkey,
+ 		};
+ 	}
++	rxq->cvm_rx_stopped = 0;
+ 	rxq->consumed_strd = 0;
+ 	rxq->decompressed = 0;
+ 	rxq->rq_pi = 0;
+@@ -523,6 +525,43 @@ mlx5_rxq_initialize(struct mlx5_rxq_data *rxq)
+ #define MLX5_RECOVERY_IGNORE_RET 1
+ #define MLX5_RECOVERY_COMPLETED_RET 2
+ 
++static __rte_noinline int
++mlx5_rx_cvm_fail_stop(struct mlx5_rxq_data *rxq,
++			 enum mlx5_rx_cvm_guard_result result,
++			 volatile struct mlx5_cqe *cqe)
++{
++	const char *reason;
++
++	switch (result) {
++	case MLX5_RX_CVM_GUARD_MPRQ:
++		reason = "MPRQ CQE";
++		break;
++	case MLX5_RX_CVM_GUARD_COMPRESSED:
++		reason = "compressed CQE";
++		break;
++	case MLX5_RX_CVM_GUARD_LENGTH:
++		reason = "invalid byte count";
++		break;
++	case MLX5_RX_CVM_GUARD_LRO:
++		reason = "unexpected LRO CQE";
++		break;
++	case MLX5_RX_CVM_GUARD_OK:
++	default:
++		reason = "unknown validation failure";
++		break;
++	}
++	if (!rxq->cvm_rx_stopped) {
++		rxq->cvm_rx_stopped = 1;
++		++rxq->stats.idropped;
++		DRV_LOG(ERR,
++			"port %u Rx queue %u stopped by CVM CQE guard: %s "
++			"(op_own=0x%02x, byte_cnt=%u, capacity=%u)",
++			rxq->port_id, rxq->idx, reason, cqe->op_own,
++			rte_be_to_cpu_32(cqe->byte_cnt), rxq->rxseg[0].length);
++	}
++	return MLX5_CRITICAL_ERROR_CQE_RET;
++}
++
+ /**
+  * Handle a Rx error.
+  * The function inserts the RQ state to reset when the first error CQE is
+@@ -817,6 +856,20 @@ mlx5_rx_poll_len(struct mlx5_rxq_data *rxq, volatile struct mlx5_cqe *cqe,
+ 					return 0;
+ 				}
+ 			}
++			op_own = cqe->op_own;
++			if (unlikely(rxq->cvm_guard &&
++			    ret == MLX5_CQE_STATUS_SW_OWN)) {
++				enum mlx5_rx_cvm_guard_result guard_result;
++				uint32_t byte_count = rte_be_to_cpu_32(cqe->byte_cnt);
++
++				guard_result = mlx5_rx_cvm_cqe_validate(true, mprq,
++					MLX5_CQE_FORMAT(op_own) == MLX5_COMPRESSED,
++					byte_count, rxq->rxseg[0].length,
++					rxq->crc_present, cqe->lro_num_seg);
++				if (guard_result != MLX5_RX_CVM_GUARD_OK)
++					return mlx5_rx_cvm_fail_stop(rxq, guard_result,
++								     cqe);
++			}
+ 			/*
+ 			 * Introduce the local variable to have queue cq_ci
+ 			 * index in queue structure always consistent with
+@@ -824,7 +877,6 @@ mlx5_rx_poll_len(struct mlx5_rxq_data *rxq, volatile struct mlx5_cqe *cqe,
+ 			 * of compressed CQE session).
+ 			 */
+ 			cq_ci = rxq->cq_ci + !rxq->cqe_comp_layout;
+-			op_own = cqe->op_own;
+ 			if (MLX5_CQE_FORMAT(op_own) == MLX5_COMPRESSED) {
+ 				volatile struct mlx5_mini_cqe8 (*mc)[8] =
+ 					(volatile struct mlx5_mini_cqe8 (*)[8])
+@@ -832,25 +884,9 @@ mlx5_rx_poll_len(struct mlx5_rxq_data *rxq, volatile struct mlx5_cqe *cqe,
+ 						[cq_ci & cqe_mask].pkt_info);
+ 
+ 				/* Fix endianness. */
+-				/*
+-				 * 压缩 CQE 里 byte_cnt 表示 mini-CQE 个数，
+-				 * 它会被用来推进 cq_ci。该值来自共享页，
+-				 * 宿主机可写，未经校验时可把 cq_ci 推到任意
+-				 * 位置 —— 越界后果是内存破坏而非坏包。
+-				 * 这里单次读入局部变量后立即校验。
+-				 */
+-				{
+-					uint32_t cnt = rxq->cqe_comp_layout ?
+-						(MLX5_CQE_NUM_MINIS(op_own) + 1U) :
+-						rte_be_to_cpu_32(cqe->byte_cnt);
+-
+-					if (unlikely(!mlx5_rx_cqe_cnt_valid(cnt, 1u << rxq->cqe_n))) {
+-						rte_atomic_fetch_add_explicit(&rxq->stats.idropped,
+-							1, rte_memory_order_relaxed);
+-						return 0;
+-					}
+-					zip->cqe_cnt = cnt;
+-				}
++				zip->cqe_cnt = rxq->cqe_comp_layout ?
++					(MLX5_CQE_NUM_MINIS(op_own) + 1U) :
++					rte_be_to_cpu_32(cqe->byte_cnt);
+ 				/*
+ 				 * Current mini array position is the one
+ 				 * returned by check_cqe64().
+@@ -863,14 +899,7 @@ mlx5_rx_poll_len(struct mlx5_rxq_data *rxq, volatile struct mlx5_cqe *cqe,
+ 				zip->ca = cq_ci;
+ 				zip->na = zip->ca + 7;
+ 				if (widx != NULL) {
+-					/*
+-					 * wqe_counter 被用作 WQE 环索引，
+-					 * 同样来自共享页。按环大小取模，
+-					 * 使越界值不会转化为越界访问。
+-					 */
+-					uint16_t wc = rte_be_to_cpu_16(cqe->wqe_counter);
+-
+-					zip->wqe_idx = wc & ((1u << rxq->elts_n) - 1);
++					zip->wqe_idx = rte_be_to_cpu_16(cqe->wqe_counter);
+ 					*widx = zip->wqe_idx;
+ 				}
+ 				/* Compute the next non compressed CQE. */
+@@ -897,12 +926,8 @@ mlx5_rx_poll_len(struct mlx5_rxq_data *rxq, volatile struct mlx5_cqe *cqe,
+ 			} else {
+ 				++rxq->cq_ci;
+ 				len = rte_be_to_cpu_32(cqe->byte_cnt);
+-				if (widx != NULL) {
+-					/* 同上：按环大小取模后再用作索引 */
+-					uint16_t wc = rte_be_to_cpu_16(cqe->wqe_counter);
+-
+-					*widx = wc & ((1u << rxq->elts_n) - 1);
+-				}
++				if (widx != NULL)
++					*widx = rte_be_to_cpu_16(cqe->wqe_counter);
+ 				if (rxq->cqe_comp_layout) {
+ 					volatile struct mlx5_cqe *next;
+ 
+@@ -1077,6 +1102,8 @@ mlx5_rx_burst(void *dpdk_rxq, struct rte_mbuf **pkts, uint16_t pkts_n)
+ 	unsigned int rq_ci = rxq->rq_ci << sges_n;
+ 	int len = 0; /* keep its value across iterations. */
+ 
++	if (unlikely(rxq->cvm_rx_stopped))
++		return 0;
+ 	while (pkts_n) {
+ 		uint16_t skip_cnt = 0;
+ 		unsigned int idx = rq_ci & wqe_mask;
+@@ -1236,6 +1263,9 @@ mlx5_rx_burst_out_of_order(void *dpdk_rxq, struct rte_mbuf **pkts, uint16_t pkts
+ 	const uint32_t rq_ci = rxq->rq_ci;
+ 	uint32_t idx = 0;
+ 
++	if (unlikely(rxq->cvm_rx_stopped))
++		return 0;
++
+ 	do {
+ 		volatile struct mlx5_wqe_data_seg *wqe;
+ 		struct rte_mbuf *rep = NULL;
+@@ -1517,6 +1547,9 @@ mlx5_rx_burst_mprq(void *dpdk_rxq, struct rte_mbuf **pkts, uint16_t pkts_n)
+ 	uint16_t consumed_strd = rxq->consumed_strd;
+ 	struct mlx5_mprq_buf *buf = (*rxq->mprq_bufs)[rq_ci & wq_mask];
+ 
++	if (unlikely(rxq->cvm_rx_stopped))
++		return 0;
++
+ 	while (i < pkts_n) {
+ 		struct rte_mbuf *pkt;
+ 		int ret;
+diff --git a/drivers/net/mlx5/mlx5_rx.h b/drivers/net/mlx5/mlx5_rx.h
+index 0ce2dc7..8f173e0 100644
+--- a/drivers/net/mlx5/mlx5_rx.h
++++ b/drivers/net/mlx5/mlx5_rx.h
+@@ -68,42 +68,6 @@ struct rxq_zip {
+ 	uint16_t wqe_idx; /* WQE index */
+ };
+ 
+-
+-/*
+- * 以下取值来自 CQ 缓冲区。在机密虚拟机里该缓冲区位于共享页，
+- * 宿主机可写，因此这些值必须视为不可信输入：先读入局部变量
+- * （volatile 保证单次读取），再校验，最后才使用。
+- *
+- * 被当作索引或长度使用而未经校验的值，越界后果是内存破坏，
+- * 不是收到坏包。
+- */
+-
+-/**
+- * 校验压缩 CQE 声明的 mini-CQE 个数。
+- *
+- * 该值用于推进 cq_ci（zip->cq_ci = rxq->cq_ci + cqe_cnt），
+- * 未经校验时可被推到任意位置。合法上限是整个 CQ 的元素数。
+- *
+- * @return 通过校验返回 true。
+- */
+-static __rte_always_inline bool
+-mlx5_rx_cqe_cnt_valid(uint32_t cqe_cnt, uint32_t cq_entries)
+-{
+-	return cqe_cnt != 0 && cqe_cnt <= cq_entries;
+-}
+-
+-/**
+- * 校验包长。
+- *
+- * 上限取 CQ 声明所能承载的最大值；调用方仍需按自身缓冲区大小
+- * 再做一次约束。
+- */
+-static __rte_always_inline bool
+-mlx5_rx_len_valid(uint32_t len)
+-{
+-	return len <= UINT16_MAX;
+-}
+-
+ /* Get pointer to the first stride. */
+ #define mlx5_mprq_buf_addr(ptr, strd_n) (RTE_PTR_ADD((ptr), \
+ 				sizeof(struct mlx5_mprq_buf) + \
+@@ -157,6 +121,8 @@ struct __rte_cache_aligned mlx5_rxq_data {
+ 	unsigned int shared:1; /* Shared RXQ. */
+ 	unsigned int delay_drop:1; /* Enable delay drop. */
+ 	unsigned int cqe_comp_layout:1; /* CQE Compression Layout*/
++	unsigned int cvm_guard:1; /* Validate untrusted CQEs in CVM mode. */
++	unsigned int cvm_rx_stopped:1; /* Queue stopped by the CVM guard. */
+ 	uint16_t port_id;
+ 	volatile uint32_t *rq_db;
+ 	volatile uint32_t *cq_db;
+diff --git a/drivers/net/mlx5/mlx5_rx_validate.h b/drivers/net/mlx5/mlx5_rx_validate.h
+new file mode 100644
+index 0000000..4b3433d
+--- /dev/null
++++ b/drivers/net/mlx5/mlx5_rx_validate.h
+@@ -0,0 +1,147 @@
++/* SPDX-License-Identifier: BSD-3-Clause
++ * Copyright (c) 2026
++ */
++
++#ifndef MLX5_RX_VALIDATE_H
++#define MLX5_RX_VALIDATE_H
++
++#include <stdbool.h>
++#include <stddef.h>
++#include <stdint.h>
++
++/**
++ * Calculate the contiguous budget available to a compressed CQE session.
++ *
++ * All arguments describe state at the entry to the current vector batch,
++ * before @p consumed entries are applied. Keeping this convention in one
++ * helper prevents callers from subtracting the same entries twice.
++ * Calculations remain 32-bit until after the minimum is selected, so a large
++ * MPRQ ring cannot wrap through an early uint16_t conversion.
++ *
++ * This helper only validates arithmetic. It does not consume a CQE or define
++ * recovery from a malformed compressed session.
++ *
++ * @param cq_entries
++ *   Total number of CQ entries in the contiguous array.
++ * @param cq_offset
++ *   Entry offset of the current vector batch.
++ * @param elts_entries
++ *   Total number of software element entries in the contiguous array.
++ * @param elts_offset
++ *   Element offset of the current vector batch.
++ * @param posted_available
++ *   Number of posted buffers available at batch entry.
++ * @param consumed
++ *   Number of non-compressed entries consumed before the compressed CQE.
++ * @param[out] budget
++ *   Minimum remaining contiguous capacity. Cleared on failure.
++ *
++ * @return
++ *   true when at least one entry remains, false for invalid or empty input.
++ */
++static inline bool
++mlx5_rx_comp_budget_calc(uint32_t cq_entries, uint32_t cq_offset,
++			 uint32_t elts_entries, uint32_t elts_offset,
++			 uint32_t posted_available, uint32_t consumed,
++			 uint32_t *budget)
++{
++	uint32_t cq_remaining;
++	uint32_t elts_remaining;
++	uint32_t min_remaining;
++
++	if (budget == NULL)
++		return false;
++	*budget = 0;
++	if (cq_offset > cq_entries || elts_offset > elts_entries)
++		return false;
++	cq_remaining = cq_entries - cq_offset;
++	elts_remaining = elts_entries - elts_offset;
++	if (consumed > cq_remaining || consumed > elts_remaining ||
++	    consumed > posted_available)
++		return false;
++	cq_remaining -= consumed;
++	elts_remaining -= consumed;
++	posted_available -= consumed;
++	min_remaining = cq_remaining < elts_remaining ?
++		cq_remaining : elts_remaining;
++	if (posted_available < min_remaining)
++		min_remaining = posted_available;
++	*budget = min_remaining;
++	return min_remaining != 0;
++}
++
++/**
++ * Validate an untrusted mini-CQE count against a fixed entry budget.
++ *
++ * The raw value and all arithmetic stay 32-bit. The function also enforces
++ * the uint16_t range of the current decompressor counters. @p count is only
++ * written on success.
++ */
++static inline bool
++mlx5_rx_mcqe_count_valid(uint32_t raw, uint32_t budget,
++			 uint32_t accumulated, uint16_t *count)
++{
++	if (count == NULL || raw == 0 || raw > UINT16_MAX)
++		return false;
++	if (accumulated > budget || raw > budget - accumulated)
++		return false;
++	if (accumulated > UINT16_MAX ||
++	    raw > (uint32_t)UINT16_MAX - accumulated)
++		return false;
++	*count = (uint16_t)raw;
++	return true;
++}
++
++enum mlx5_rx_cvm_guard_result {
++	MLX5_RX_CVM_GUARD_OK = 0,
++	MLX5_RX_CVM_GUARD_MPRQ,
++	MLX5_RX_CVM_GUARD_COMPRESSED,
++	MLX5_RX_CVM_GUARD_LENGTH,
++	MLX5_RX_CVM_GUARD_LRO,
++};
++
++/**
++ * Validate the fields which can change scalar SPRQ memory access.
++ *
++ * CVM strict mode intentionally supports only scalar, single-segment SPRQ.
++ * This helper is placed before compressed-CQE decoding and before packet
++ * metadata is copied to an mbuf. Non-CVM operation is left unchanged.
++ *
++ * @param enabled
++ *   Whether CVM strict-mode validation is enabled for the queue.
++ * @param mprq
++ *   Whether the caller is the MPRQ receive function.
++ * @param compressed
++ *   Whether the CQE claims to contain compressed completions.
++ * @param byte_count
++ *   Host-provided packet byte count in CPU byte order.
++ * @param capacity
++ *   Posted data-buffer capacity for this packet.
++ * @param crc_present
++ *   Whether the byte count includes a four-byte Ethernet CRC.
++ * @param lro_num_seg
++ *   Host-provided number of LRO segments.
++ *
++ * @return
++ *   A precise rejection reason, or MLX5_RX_CVM_GUARD_OK.
++ */
++static inline enum mlx5_rx_cvm_guard_result
++mlx5_rx_cvm_cqe_validate(bool enabled, bool mprq, bool compressed,
++			 uint32_t byte_count, uint32_t capacity,
++			 bool crc_present, uint8_t lro_num_seg)
++{
++	if (!enabled)
++		return MLX5_RX_CVM_GUARD_OK;
++	if (mprq)
++		return MLX5_RX_CVM_GUARD_MPRQ;
++	if (compressed)
++		return MLX5_RX_CVM_GUARD_COMPRESSED;
++	if (capacity == 0 || byte_count > capacity ||
++	    byte_count < (crc_present ? 4U : 0U))
++		return MLX5_RX_CVM_GUARD_LENGTH;
++	if (lro_num_seg > 1)
++		return MLX5_RX_CVM_GUARD_LRO;
++	return MLX5_RX_CVM_GUARD_OK;
++}
++
++#endif /* MLX5_RX_VALIDATE_H */
+diff --git a/drivers/net/mlx5/mlx5_rxq.c b/drivers/net/mlx5/mlx5_rxq.c
+index c4ba746..3e862af 100644
+--- a/drivers/net/mlx5/mlx5_rxq.c
++++ b/drivers/net/mlx5/mlx5_rxq.c
+@@ -24,6 +24,7 @@
+ #include <mlx5_malloc.h>
+ #include <mlx5_common.h>
+ #include <mlx5_common_mr.h>
++#include <mlx5_cvm_shared.h>
+ 
+ #include "mlx5_defs.h"
+ #include "mlx5.h"
+@@ -1695,6 +1696,12 @@ mlx5_mprq_prepare(struct rte_eth_dev *dev, uint16_t idx, uint16_t desc,
+ 				log_max_stride_size);
+ 	uint32_t log_stride_wqe_size;
+ 
++	if (mlx5_cvm_shared_enabled()) {
++		if (config->mprq.enabled)
++			DRV_LOG(INFO, "Port %u MPRQ disabled in CVM strict mode.",
++				dev->data->port_id);
++		return -1;
++	}
+ 	if (mlx5_check_mprq_support(dev) != 1 || rx_seg_en || is_extmem)
+ 		goto unsupport;
+ 	/* Checks if chosen number of strides is in supported range. */
+@@ -1844,6 +1851,22 @@ mlx5_rxq_new(struct rte_eth_dev *dev, uint16_t idx, uint16_t desc,
+ 	size_t alloc_size = sizeof(*tmpl) + desc_n * sizeof(struct rte_mbuf *);
+ 	const struct rte_eth_rxseg_split *qs_seg = rx_seg;
+ 	unsigned int tail_len;
++	bool cvm_guard = mlx5_cvm_shared_enabled();
++
++	if (cvm_guard && conf->share_group > 0) {
++		DRV_LOG(ERR,
++			"port %u shared Rx queue %u is unsupported in CVM strict mode",
++			dev->data->port_id, idx);
++		rte_errno = ENOTSUP;
++		return NULL;
++	}
++	if (cvm_guard && lro_on_queue) {
++		DRV_LOG(ERR,
++			"port %u Rx queue %u LRO is unsupported in CVM strict mode",
++			dev->data->port_id, idx);
++		rte_errno = ENOTSUP;
++		return NULL;
++	}
+ 
+ 	if (mprq_en) {
+ 		/* Trim the number of descs needed. */
+@@ -1939,6 +1962,14 @@ mlx5_rxq_new(struct rte_eth_dev *dev, uint16_t idx, uint16_t desc,
+ 	} while (tail_len || !rte_is_power_of_2(tmpl->rxq.rxseg_n));
+ 	MLX5_ASSERT(tmpl->rxq.rxseg_n &&
+ 		    tmpl->rxq.rxseg_n <= MLX5_MAX_RXQ_NSEG);
++	if (cvm_guard && tmpl->rxq.rxseg_n > 1) {
++		DRV_LOG(ERR,
++			"port %u Rx queue %u needs %u scatter segments; "
++			"scatter is unsupported in CVM strict mode",
++			dev->data->port_id, idx, tmpl->rxq.rxseg_n);
++		rte_errno = ENOTSUP;
++		goto error;
++	}
+ 	if (tmpl->rxq.rxseg_n > 1 && !(offloads & RTE_ETH_RX_OFFLOAD_SCATTER)) {
+ 		DRV_LOG(ERR, "port %u Rx queue %u: Scatter offload is not"
+ 			" configured and no enough mbuf space(%u) to contain "
+@@ -2075,6 +2106,7 @@ mlx5_rxq_new(struct rte_eth_dev *dev, uint16_t idx, uint16_t desc,
+ 	tmpl->rxq.rss_hash = !!priv->rss_conf.rss_hf &&
+ 		(!!(dev->data->dev_conf.rxmode.mq_mode & RTE_ETH_MQ_RX_RSS));
+ 	/* Save port ID. */
++	tmpl->rxq.cvm_guard = cvm_guard;
+ 	tmpl->rxq.port_id = dev->data->port_id;
+ 	tmpl->sh = priv->sh;
+ 	tmpl->rxq.mp = rx_seg[0].mp;
+diff --git a/drivers/net/mlx5/mlx5_rxtx_vec.c b/drivers/net/mlx5/mlx5_rxtx_vec.c
+index 79e9281..f8f3bab 100644
+--- a/drivers/net/mlx5/mlx5_rxtx_vec.c
++++ b/drivers/net/mlx5/mlx5_rxtx_vec.c
+@@ -14,6 +14,7 @@
+ 
+ #include <mlx5_glue.h>
+ #include <mlx5_prm.h>
++#include <mlx5_cvm_shared.h>
+ 
+ #include "mlx5_defs.h"
+ #include "mlx5.h"
+@@ -604,6 +605,8 @@ mlx5_rxq_check_vec_support(struct mlx5_rxq_data *rxq)
+ 	struct mlx5_rxq_ctrl *ctrl =
+ 		container_of(rxq, struct mlx5_rxq_ctrl, rxq);
+ 
++	if (mlx5_cvm_shared_enabled())
++		return -ENOTSUP;
+ 	if (!RXQ_PORT(ctrl)->config.rx_vec_en || rxq->sges_n != 0)
+ 		return -ENOTSUP;
+ 	if (mlx5_shared_rq_enabled(RXQ_DEV(ctrl)))
+diff --git a/drivers/net/mlx5/mlx5_tx.c b/drivers/net/mlx5/mlx5_tx.c
+index a562c27..5aa6d85 100644
+--- a/drivers/net/mlx5/mlx5_tx.c
++++ b/drivers/net/mlx5/mlx5_tx.c
+@@ -156,14 +156,9 @@ mlx5_tx_comp_flush(struct mlx5_txq_data *__rte_restrict txq,
+ 	if (likely(last_cqe != NULL)) {
+ 		uint16_t tail;
+ 
+-		/*
+-		 * wqe_counter 来自共享页（宿主机可写），被用作 WQE 环
+-		 * 的生产者索引。按环掩码取模，使异常值不会转化为
+-		 * 越界访问。
+-		 */
+-		txq->wqe_pi = rte_be_to_cpu_16(last_cqe->wqe_counter) &
+-			      txq->wqe_m;
+-		tail = txq->fcqs[(txq->cq_ci - 1) & txq->cqe_m];
++		txq->wqe_pi = rte_be_to_cpu_16(last_cqe->wqe_counter);
++		tail = mlx5_tx_fcq_elts_head(
++			txq->fcqs[(txq->cq_ci - 1) & txq->cqe_m]);
+ 		if (likely(tail != txq->elts_tail)) {
+ 			mlx5_tx_free_elts(txq, tail, olx);
+ 			MLX5_ASSERT(tail == txq->elts_tail);
+@@ -194,6 +189,8 @@ mlx5_tx_handle_completion(struct mlx5_txq_data *__rte_restrict txq,
+ 	bool ring_doorbell = false;
+ 	int ret;
+ 
++	if (unlikely(txq->cvm_tx_stopped))
++		return;
+ 	do {
+ 		volatile struct mlx5_cqe *cqe;
+ 
+@@ -234,6 +231,24 @@ mlx5_tx_handle_completion(struct mlx5_txq_data *__rte_restrict txq,
+ 			continue;
+ 		}
+ 		/* Normal transmit completion. */
++		if (unlikely(txq->cvm_guard)) {
++			uint32_t fcq = txq->fcqs[txq->cq_ci & txq->cqe_m];
++			enum mlx5_tx_cvm_guard_result guard;
++
++			guard = mlx5_tx_cvm_cqe_validate(true, txq->cq_ci,
++						 txq->cq_pi, fcq,
++						 cqe->wqe_counter);
++			if (unlikely(guard != MLX5_TX_CVM_GUARD_OK)) {
++				DRV_LOG(ERR,
++					"port %u Tx queue %u fail-stopped: invalid CQE "
++					"(reason=%u cq_ci=%u cq_pi=%u expected_wqe=%u got_wqe=%u)",
++					txq->port_id, txq->idx, guard, txq->cq_ci,
++					txq->cq_pi, mlx5_tx_fcq_wqe_counter(fcq),
++					cqe->wqe_counter);
++				txq->cvm_tx_stopped = 1;
++				return;
++			}
++		}
+ 		MLX5_ASSERT(txq->cq_ci != txq->cq_pi);
+ #ifdef RTE_LIBRTE_MLX5_DEBUG
+ 		MLX5_ASSERT((txq->fcqs[txq->cq_ci & txq->cqe_m] >> 16) ==
+diff --git a/drivers/net/mlx5/mlx5_tx.h b/drivers/net/mlx5/mlx5_tx.h
+index 1630720..2b9d256 100644
+--- a/drivers/net/mlx5/mlx5_tx.h
++++ b/drivers/net/mlx5/mlx5_tx.h
+@@ -22,6 +22,7 @@
+ #include "mlx5_autoconf.h"
+ #include "mlx5_rxtx.h"
+ #include "mlx5_trace.h"
++#include "mlx5_tx_validate.h"
+ 
+ /* TX burst subroutines return codes. */
+ enum mlx5_txcmp_code {
+@@ -144,6 +145,8 @@ struct __rte_cache_aligned mlx5_txq_data {
+ 	uint16_t rt_timestamp:1; /* Realtime timestamp format. */
+ 	uint16_t wait_on_time:1; /* WQE with timestamp is supported. */
+ 	uint16_t fast_free:1; /* mbuf fast free on Tx is enabled. */
++	uint16_t cvm_guard:1; /* Validate untrusted CQEs in CVM strict mode. */
++	uint16_t cvm_tx_stopped:1; /* Queue is fail-stopped on an invalid CQE. */
+ 	uint16_t inlen_send; /* Ordinary send data inline size. */
+ 	uint16_t inlen_empw; /* eMPW max packet size to inline. */
+ 	uint16_t inlen_mode; /* Minimal data length to inline. */
+@@ -154,11 +157,7 @@ struct __rte_cache_aligned mlx5_txq_data {
+ 	struct mlx5_mr_ctrl mr_ctrl; /* MR control descriptor. */
+ 	struct mlx5_wqe *wqes; /* Work queue. */
+ 	struct mlx5_wqe *wqes_end; /* Work queue array limit. */
+-#ifdef RTE_LIBRTE_MLX5_DEBUG
+-	uint32_t *fcqs; /* Free completion queue (debug extended). */
+-#else
+-	uint16_t *fcqs; /* Free completion queue. */
+-#endif
++	uint32_t *fcqs; /* Trusted elts head and expected WQE counter per CQE. */
+ 	volatile struct mlx5_cqe *cqes; /* Completion queue. */
+ 	volatile uint32_t *qp_db; /* Work queue doorbell. */
+ 	volatile uint32_t *cq_db; /* Completion queue doorbell. */
+@@ -762,13 +761,9 @@ mlx5_tx_request_completion(struct mlx5_txq_data *__rte_restrict txq,
+ 		/* Request unconditional completion on last WQE. */
+ 		last->cseg.flags = RTE_BE32(MLX5_COMP_ALWAYS <<
+ 					    MLX5_COMP_MODE_OFFSET);
+-		/* Save elts_head in dedicated free on completion queue. */
+-#ifdef RTE_LIBRTE_MLX5_DEBUG
+-		txq->fcqs[txq->cq_pi++ & txq->cqe_m] = head |
+-			  (last->cseg.opcode >> 8) << 16;
+-#else
+-		txq->fcqs[txq->cq_pi++ & txq->cqe_m] = head;
+-#endif
++		/* Save trusted elts_head and expected WQE counter for this CQE. */
++		txq->fcqs[txq->cq_pi++ & txq->cqe_m] = mlx5_tx_fcq_make(head,
++					(uint16_t)(last->cseg.opcode >> 8));
+ 		/* A CQE slot must always be available. */
+ 		MLX5_ASSERT((txq->cq_pi - txq->cq_ci) <= txq->cqe_s);
+ 	}
+@@ -808,12 +803,8 @@ mlx5_tx_request_completion_trace(struct mlx5_txq_data *__rte_restrict txq,
+ 			txq->elts_comp = head;
+ 		}
+ 		/* Completion request flag was set on cseg constructing. */
+-#ifdef RTE_LIBRTE_MLX5_DEBUG
+-		txq->fcqs[txq->cq_pi++ & txq->cqe_m] = head |
+-			  (wqe->cseg.opcode >> 8) << 16;
+-#else
+-		txq->fcqs[txq->cq_pi++ & txq->cqe_m] = head;
+-#endif
++		txq->fcqs[txq->cq_pi++ & txq->cqe_m] = mlx5_tx_fcq_make(head,
++					(uint16_t)(wqe->cseg.opcode >> 8));
+ 		/* A CQE slot must always be available. */
+ 		MLX5_ASSERT((txq->cq_pi - txq->cq_ci) <= txq->cqe_s);
+ 		/* Advance to the next WQE in the queue. */
+@@ -3560,6 +3551,8 @@ mlx5_tx_burst_tmpl(struct mlx5_txq_data *__rte_restrict txq,
+ 	enum mlx5_txcmp_code ret;
+ 	unsigned int part;
+ 
++	if (unlikely(txq->cvm_tx_stopped))
++		return 0;
+ 	MLX5_ASSERT(txq->elts_s >= (uint16_t)(txq->elts_head - txq->elts_tail));
+ 	MLX5_ASSERT(txq->wqe_s >= (uint16_t)(txq->wqe_ci - txq->wqe_pi));
+ 	if (unlikely(!pkts_n))
+@@ -3581,6 +3574,8 @@ mlx5_tx_burst_tmpl(struct mlx5_txq_data *__rte_restrict txq,
+ 	 */
+ 	rte_prefetch0(*(pkts + loc.pkts_sent));
+ 	mlx5_tx_handle_completion(txq, olx);
++	if (unlikely(txq->cvm_tx_stopped))
++		return 0;
+ 	/*
+ 	 * Calculate the number of available resources - elts and WQEs.
+ 	 * There are two possible different scenarios:
+diff --git a/drivers/net/mlx5/mlx5_tx_validate.h b/drivers/net/mlx5/mlx5_tx_validate.h
+new file mode 100644
+index 0000000..6f2e53d
+--- /dev/null
++++ b/drivers/net/mlx5/mlx5_tx_validate.h
+@@ -0,0 +1,48 @@
++/* SPDX-License-Identifier: BSD-3-Clause
++ * Copyright (c) 2026
++ */
++
++#ifndef MLX5_TX_VALIDATE_H_
++#define MLX5_TX_VALIDATE_H_
++
++#include <stdbool.h>
++#include <stdint.h>
++
++enum mlx5_tx_cvm_guard_result {
++	MLX5_TX_CVM_GUARD_OK = 0,
++	MLX5_TX_CVM_GUARD_NO_REQUEST,
++	MLX5_TX_CVM_GUARD_WQE_COUNTER,
++};
++
++static inline uint32_t
++mlx5_tx_fcq_make(uint16_t elts_head, uint16_t wqe_counter)
++{
++	return (uint32_t)elts_head | ((uint32_t)wqe_counter << 16);
++}
++
++static inline uint16_t
++mlx5_tx_fcq_elts_head(uint32_t entry)
++{
++	return (uint16_t)entry;
++}
++
++static inline uint16_t
++mlx5_tx_fcq_wqe_counter(uint32_t entry)
++{
++	return (uint16_t)(entry >> 16);
++}
++
++static inline enum mlx5_tx_cvm_guard_result
++mlx5_tx_cvm_cqe_validate(bool enabled, uint16_t cq_ci, uint16_t cq_pi,
++			 uint32_t fcq_entry, uint16_t cqe_wqe_counter)
++{
++	if (!enabled)
++		return MLX5_TX_CVM_GUARD_OK;
++	if (cq_ci == cq_pi)
++		return MLX5_TX_CVM_GUARD_NO_REQUEST;
++	if (mlx5_tx_fcq_wqe_counter(fcq_entry) != cqe_wqe_counter)
++		return MLX5_TX_CVM_GUARD_WQE_COUNTER;
++	return MLX5_TX_CVM_GUARD_OK;
++}
++
++#endif /* MLX5_TX_VALIDATE_H_ */
+diff --git a/drivers/net/mlx5/mlx5_txq.c b/drivers/net/mlx5/mlx5_txq.c
+index ad15b20..19589b6 100644
+--- a/drivers/net/mlx5/mlx5_txq.c
++++ b/drivers/net/mlx5/mlx5_txq.c
+@@ -22,6 +22,7 @@
+ #include <mlx5_common.h>
+ #include <mlx5_common_mr.h>
+ #include <mlx5_malloc.h>
++#include <mlx5_cvm_shared.h>
+ 
+ #include "mlx5_defs.h"
+ #include "mlx5_utils.h"
+@@ -279,6 +280,7 @@ mlx5_tx_queue_start_primary(struct rte_eth_dev *dev, uint16_t idx)
+ 	txq_ctrl->txq.wqe_ci = 0;
+ 	txq_ctrl->txq.wqe_pi = 0;
+ 	txq_ctrl->txq.elts_comp = 0;
++	txq_ctrl->txq.cvm_tx_stopped = 0;
+ 	/* Set the actual queue state. */
+ 	dev->data->tx_queue_state[idx] = RTE_ETH_QUEUE_STATE_STARTED;
+ 	return 0;
+@@ -792,6 +794,8 @@ txq_set_params(struct mlx5_txq_ctrl *txq_ctrl)
+ 		!!((txq_ctrl->txq.offloads & RTE_ETH_TX_OFFLOAD_MBUF_FAST_FREE) &&
+ 		   !(txq_ctrl->txq.offloads & RTE_ETH_TX_OFFLOAD_MULTI_SEGS) &&
+ 		   !config->mprq.enabled);
++	txq_ctrl->txq.cvm_guard = mlx5_cvm_shared_enabled();
++	txq_ctrl->txq.cvm_tx_stopped = 0;
+ 	if (config->txqs_inline == MLX5_ARG_UNSET)
+ 		txqs_inline =
+ #if defined(RTE_ARCH_ARM64)

@@ -1,3 +1,7 @@
+> Historical exploration record. Some conclusions below were superseded.
+> See the current [project README](../README.md) and the ordered
+> [patch series](../patches/README.md) before reproducing a result.
+
 # DPDK 25.11.3 mlx5：所有需要改道的 DMA 内存注册点
 
 改道的对象不只是注册调用，而是**分配器 + 注册**这一对。

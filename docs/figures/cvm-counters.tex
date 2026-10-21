@@ -1,0 +1,18 @@
+\begin{table}[t]
+  \centering
+  \caption{Packet counters for the CVM forwarding test (1514-byte frames).}
+  \label{tab:cvm-counters}
+  \begin{tabular}{@{}lrr@{}}
+    \toprule
+    Counter & Host physical port & CVM testpmd \\
+    \midrule
+    RX total                       & 65,650,022 & --- \\
+    Accepted by CVM RX             & ---        & 65,623,596 \\
+    RX missed (queue full)         & ---        & 26,426 \\
+    TX requested                   & ---        & 65,623,596 \\
+    TX accepted                    & ---        & 65,608,679 \\
+    TX dropped (burst full)        & ---        & 14,917 \\
+    Throughput (Gb/s, 1514\,B frame) & ---      & 98.3--98.4 \\
+    \bottomrule
+  \end{tabular}
+\end{table}

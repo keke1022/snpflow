@@ -1,3 +1,7 @@
+> Historical exploration record. Some conclusions below were superseded.
+> See the current [project README](README.md) and the ordered
+> [patch series](patches/README.md) before reproducing a result.
+
 # SNP guest 下 mlx5 数据面实测结论
 
 环境：AMD EPYC 9354 / SEV-SNP guest (VMPL0) / ConnectX-7 PF1 直通 /
@@ -85,7 +89,7 @@ DPDK: 挂钩覆盖两处 —— mempool（mbuf）+ DevX 队列内存（CQ/WQ/doo
 ## 复现
 
 ```bash
-./sync.sh
+./sync.sh cvm26:~/snp-dpdk/
 ssh cvm26 'cd ~/snp-dpdk && make'
 ssh cvm26 'cd ~/snp-dpdk && sudo ./snp-probe [字节数]'   # verbs 路径，默认 64MB
 ssh cvm26 'cd ~/snp-dpdk && sudo ./devx-probe [字节数]'  # DevX 路径，默认 256KB

@@ -1,0 +1,536 @@
+From 466d145889935ba57d54745174b20655e3a31b89 Mon Sep 17 00:00:00 2001
+From: CVM DPDK prototype <cvm@example.invalid>
+Date: Mon, 28 Sep 2026 04:03:20 +0000
+Subject: [PATCH] app/testpmd: add synchronous private mbuf bridge for CVM
+
+Keep NIC-facing packet buffers in cvm_shared memory while forwarding engines operate only on synchronous deep copies in private guest memory. Mark the private peer pool non-I/O so device drivers do not register it for DMA, validate RX chains before copying, sanitize device metadata, and preserve pinned external-buffer ownership on TX.
+---
+ app/test-pmd/cvm_mbuf_bridge.c | 323 +++++++++++++++++++++++++++++++++
+ app/test-pmd/cvm_mbuf_bridge.h |  49 +++++
+ app/test-pmd/meson.build       |   1 +
+ app/test-pmd/testpmd.c         |  19 +-
+ app/test-pmd/testpmd.h         |  16 ++
+ 5 files changed, 406 insertions(+), 2 deletions(-)
+ create mode 100644 app/test-pmd/cvm_mbuf_bridge.c
+ create mode 100644 app/test-pmd/cvm_mbuf_bridge.h
+
+diff --git a/app/test-pmd/cvm_mbuf_bridge.c b/app/test-pmd/cvm_mbuf_bridge.c
+new file mode 100644
+index 0000000..a8714e9
+--- /dev/null
++++ b/app/test-pmd/cvm_mbuf_bridge.c
+@@ -0,0 +1,323 @@
++/* SPDX-License-Identifier: BSD-3-Clause */
++
++#include <errno.h>
++#include <inttypes.h>
++#include <stdio.h>
++#include <string.h>
++
++#include <rte_branch_prediction.h>
++#include <rte_eal.h>
++#include <rte_errno.h>
++#include <rte_mbuf.h>
++#include <rte_mbuf_pool_ops.h>
++#include <rte_mempool.h>
++
++#include "testpmd.h"
++#include "cvm_mbuf_bridge.h"
++
++#define CVM_BRIDGE_MAX_POOLS 32
++#define CVM_PRIVATE_POOL_NAME "cvm_priv_%u_%u"
++
++struct cvm_pool_pair {
++	struct rte_mempool *dma_pool;
++	struct rte_mempool *private_pool;
++};
++
++static struct cvm_pool_pair pool_pairs[CVM_BRIDGE_MAX_POOLS];
++static uint16_t pool_pair_count;
++
++/*
++ * This pool is CPU-only. NO_IOVA_CONTIG keeps NON_IO set after population,
++ * which prevents device drivers from trying to register it for DMA.
++ */
++static struct rte_mempool *
++private_mbuf_pool_create(const char *name, unsigned int n,
++		unsigned int cache_size, uint16_t data_room_size, int socket_id)
++{
++	struct rte_pktmbuf_pool_private mbp_priv = {
++		.mbuf_data_room_size = data_room_size,
++		.mbuf_priv_size = 0,
++	};
++	struct rte_mempool *mp;
++	const char *ops_name;
++	unsigned int elt_size = sizeof(struct rte_mbuf) + data_room_size;
++	int ret;
++
++	mp = rte_mempool_create_empty(name, n, elt_size, cache_size,
++			sizeof(struct rte_pktmbuf_pool_private), socket_id,
++			RTE_MEMPOOL_F_NO_IOVA_CONTIG);
++	if (mp == NULL)
++		return NULL;
++	ops_name = rte_mbuf_best_mempool_ops();
++	ret = rte_mempool_set_ops_byname(mp, ops_name, NULL);
++	if (ret != 0) {
++		rte_errno = -ret;
++		goto fail;
++	}
++	rte_pktmbuf_pool_init(mp, &mbp_priv);
++	ret = rte_mempool_populate_default(mp);
++	if (ret < 0) {
++		rte_errno = -ret;
++		goto fail;
++	}
++	rte_mempool_obj_iter(mp, rte_pktmbuf_init, NULL);
++	if (unlikely((mp->flags & RTE_MEMPOOL_F_NON_IO) == 0)) {
++		rte_errno = EINVAL;
++		goto fail;
++	}
++	return mp;
++
++fail:
++	rte_mempool_free(mp);
++	return NULL;
++}
++
++static int
++private_pool_name(char *name, size_t size, unsigned int socket_id,
++		  uint16_t size_idx)
++{
++	int ret;
++
++	ret = snprintf(name, size, CVM_PRIVATE_POOL_NAME, socket_id, size_idx);
++	if (ret < 0 || (size_t)ret >= size) {
++		rte_errno = ENAMETOOLONG;
++		return -ENAMETOOLONG;
++	}
++	return 0;
++}
++
++static int
++add_pair(struct rte_mempool *dma_pool, struct rte_mempool *private_pool)
++{
++	uint16_t i;
++
++	for (i = 0; i < pool_pair_count; i++) {
++		if (pool_pairs[i].dma_pool == dma_pool) {
++			if (pool_pairs[i].private_pool != private_pool) {
++				rte_errno = EEXIST;
++				return -EEXIST;
++			}
++			return 0;
++		}
++	}
++	if (pool_pair_count == CVM_BRIDGE_MAX_POOLS) {
++		rte_errno = ENOSPC;
++		return -ENOSPC;
++	}
++	pool_pairs[pool_pair_count].dma_pool = dma_pool;
++	pool_pairs[pool_pair_count].private_pool = private_pool;
++	/* Forwarding lcores start only after pool creation has finished. */
++	pool_pair_count++;
++	return 0;
++}
++
++int
++cvm_mbuf_bridge_register_pool(struct rte_mempool *dma_pool,
++		unsigned int nb_mbufs, unsigned int cache_size,
++		uint16_t data_room_size, unsigned int socket_id,
++		uint16_t size_idx)
++{
++	struct rte_mempool *private_pool;
++	char name[RTE_MEMPOOL_NAMESIZE];
++	int ret;
++
++	if (dma_pool == NULL || rte_eal_process_type() != RTE_PROC_PRIMARY) {
++		rte_errno = EINVAL;
++		return -EINVAL;
++	}
++	if ((rte_pktmbuf_priv_flags(dma_pool) &
++	     RTE_PKTMBUF_POOL_F_PINNED_EXT_BUF) == 0) {
++		rte_errno = EINVAL;
++		return -EINVAL;
++	}
++	ret = private_pool_name(name, sizeof(name), socket_id, size_idx);
++	if (ret != 0)
++		return ret;
++	private_pool = private_mbuf_pool_create(name, nb_mbufs, cache_size,
++					       data_room_size, socket_id);
++	if (private_pool == NULL)
++		return -rte_errno;
++	ret = add_pair(dma_pool, private_pool);
++	if (ret != 0) {
++		rte_mempool_free(private_pool);
++		return ret;
++	}
++	TESTPMD_LOG(INFO,
++		"CVM synchronous mbuf bridge: DMA pool %s -> private pool %s\n",
++		dma_pool->name, private_pool->name);
++	return 0;
++}
++
++int
++cvm_mbuf_bridge_attach_pool(struct rte_mempool *dma_pool,
++		unsigned int socket_id, uint16_t size_idx)
++{
++	struct rte_mempool *private_pool;
++	char name[RTE_MEMPOOL_NAMESIZE];
++	int ret;
++
++	if (dma_pool == NULL) {
++		rte_errno = EINVAL;
++		return -EINVAL;
++	}
++	ret = private_pool_name(name, sizeof(name), socket_id, size_idx);
++	if (ret != 0)
++		return ret;
++	private_pool = rte_mempool_lookup(name);
++	if (private_pool == NULL)
++		return 0;
++	if ((private_pool->flags & RTE_MEMPOOL_F_NON_IO) == 0) {
++		rte_errno = EINVAL;
++		return -EINVAL;
++	}
++	return add_pair(dma_pool, private_pool);
++}
++
++bool
++cvm_mbuf_bridge_enabled(void)
++{
++	return pool_pair_count != 0;
++}
++
++static const struct cvm_pool_pair *
++find_dma_pool(const struct rte_mempool *pool)
++{
++	uint16_t i;
++
++	for (i = 0; i < pool_pair_count; i++)
++		if (pool_pairs[i].dma_pool == pool)
++			return &pool_pairs[i];
++	return NULL;
++}
++
++static const struct cvm_pool_pair *
++find_private_pool(const struct rte_mempool *pool)
++{
++	uint16_t i;
++
++	for (i = 0; i < pool_pair_count; i++)
++		if (pool_pairs[i].private_pool == pool)
++			return &pool_pairs[i];
++	return NULL;
++}
++
++/* Validate every bound consumed by rte_pktmbuf_copy() before it walks m. */
++static bool
++mbuf_chain_valid(const struct rte_mbuf *m)
++{
++	const struct rte_mbuf *seg = m;
++	uint64_t total = 0;
++	uint16_t count = 0;
++
++	if (m == NULL || m->pkt_len == 0 || m->nb_segs == 0)
++		return false;
++	while (seg != NULL && count < m->nb_segs) {
++		if (seg->buf_addr == NULL || seg->data_off > seg->buf_len ||
++		    seg->data_len > seg->buf_len - seg->data_off)
++			return false;
++		total += seg->data_len;
++		if (total > UINT32_MAX)
++			return false;
++		seg = seg->next;
++		count++;
++	}
++	return seg == NULL && count == m->nb_segs && total == m->pkt_len;
++}
++
++/* Device-produced metadata is not an authority after the trust boundary. */
++static void
++sanitize_rx_metadata(struct rte_mbuf *m, uint16_t port)
++{
++	m->port = port;
++	m->ol_flags = 0;
++	m->packet_type = 0;
++	m->vlan_tci = 0;
++	m->vlan_tci_outer = 0;
++	m->tx_offload = 0;
++	memset(&m->hash, 0, sizeof(m->hash));
++	memset(&m->dynfield1, 0, sizeof(m->dynfield1));
++}
++
++uint16_t
++cvm_mbuf_bridge_rx_copy(struct rte_mbuf **pkts, uint16_t nb_pkts,
++		uint16_t *dropped)
++{
++	uint16_t drop_count = 0;
++	uint16_t out = 0;
++	uint16_t i;
++
++	for (i = 0; i < nb_pkts; i++) {
++		struct rte_mbuf *src = pkts[i];
++		const struct cvm_pool_pair *pair = find_dma_pool(src->pool);
++		struct rte_mbuf *dst;
++		uint16_t port;
++
++		if (pair == NULL) {
++			pkts[out++] = src;
++			continue;
++		}
++		port = src->port;
++		if (unlikely(!mbuf_chain_valid(src))) {
++			rte_pktmbuf_free(src);
++			drop_count++;
++			continue;
++		}
++		dst = rte_pktmbuf_copy(src, pair->private_pool, 0, UINT32_MAX);
++		/* The synchronous snapshot is complete before the DMA slot returns. */
++		rte_pktmbuf_free(src);
++		if (unlikely(dst == NULL)) {
++			drop_count++;
++			continue;
++		}
++		sanitize_rx_metadata(dst, port);
++		pkts[out++] = dst;
++	}
++	if (dropped != NULL)
++		*dropped = drop_count;
++	return out;
++}
++
++int
++cvm_mbuf_bridge_tx_copy(struct rte_mbuf **pkts, uint16_t nb_pkts)
++{
++	struct rte_mbuf *copies[MAX_PKT_BURST] = {0};
++	uint16_t i;
++
++	if (unlikely(nb_pkts > RTE_DIM(copies))) {
++		rte_errno = EINVAL;
++		return -EINVAL;
++	}
++	for (i = 0; i < nb_pkts; i++) {
++		const struct cvm_pool_pair *pair = find_private_pool(pkts[i]->pool);
++
++		if (pair == NULL)
++			continue;
++		if (unlikely(!mbuf_chain_valid(pkts[i]))) {
++			rte_errno = EINVAL;
++			goto fail;
++		}
++		copies[i] = rte_pktmbuf_copy(pkts[i], pair->dma_pool, 0,
++						   UINT32_MAX);
++		if (unlikely(copies[i] == NULL)) {
++			rte_errno = ENOMEM;
++			goto fail;
++		}
++		/* rte_pktmbuf_copy() assumes an ordinary destination pool and
++		 * clears EXTERNAL on the head. This pool has a permanently pinned
++		 * external data room, so restore the ownership marker before TX. */
++		copies[i]->ol_flags |= RTE_MBUF_F_EXTERNAL;
++	}
++	for (i = 0; i < nb_pkts; i++) {
++		if (copies[i] == NULL)
++			continue;
++		rte_pktmbuf_free(pkts[i]);
++		pkts[i] = copies[i];
++	}
++	return 0;
++
++fail:
++	while (i-- != 0)
++		if (copies[i] != NULL)
++			rte_pktmbuf_free(copies[i]);
++	return -rte_errno;
++}
+diff --git a/app/test-pmd/cvm_mbuf_bridge.h b/app/test-pmd/cvm_mbuf_bridge.h
+new file mode 100644
+index 0000000..2c6cb53
+--- /dev/null
++++ b/app/test-pmd/cvm_mbuf_bridge.h
+@@ -0,0 +1,49 @@
++/* SPDX-License-Identifier: BSD-3-Clause */
++#ifndef _CVM_MBUF_BRIDGE_H_
++#define _CVM_MBUF_BRIDGE_H_
++
++#include <stdbool.h>
++#include <stdint.h>
++
++#include <rte_mbuf.h>
++#include <rte_mempool.h>
++
++/*
++ * Register a device-facing pool whose data rooms are backed by cvm_shared.
++ * A normal, private peer pool is created with the same capacity and data-room
++ * size. Registration happens during testpmd initialization, before forwarding
++ * lcores start, so hot-path lookups require no lock.
++ */
++int cvm_mbuf_bridge_register_pool(struct rte_mempool *dma_pool,
++		unsigned int nb_mbufs, unsigned int cache_size,
++		uint16_t data_room_size, unsigned int socket_id,
++		uint16_t size_idx);
++
++/*
++ * A secondary process cannot create the peer pool. Attach the process-local
++ * pair table if the primary process has already created one. Absence of a
++ * peer pool means that dma_pool is an ordinary non-CVM pool and is not an
++ * error.
++ */
++int cvm_mbuf_bridge_attach_pool(struct rte_mempool *dma_pool,
++		unsigned int socket_id, uint16_t size_idx);
++
++bool cvm_mbuf_bridge_enabled(void);
++
++/*
++ * Replace packets backed by registered DMA pools with synchronous deep copies
++ * from their private peer pools. Ordinary packets pass through unchanged.
++ * Returned packets are compacted at the start of pkts. dropped receives the
++ * number rejected for malformed chains or allocation failures.
++ */
++uint16_t cvm_mbuf_bridge_rx_copy(struct rte_mbuf **pkts, uint16_t nb_pkts,
++		uint16_t *dropped);
++
++/*
++ * Replace private application packets with synchronous deep copies from the
++ * corresponding DMA-facing pools. On success private sources are released.
++ * On failure pkts and their ownership are unchanged.
++ */
++int cvm_mbuf_bridge_tx_copy(struct rte_mbuf **pkts, uint16_t nb_pkts);
++
++#endif /* _CVM_MBUF_BRIDGE_H_ */
+diff --git a/app/test-pmd/meson.build b/app/test-pmd/meson.build
+index 83163a5..adc6aef 100644
+--- a/app/test-pmd/meson.build
++++ b/app/test-pmd/meson.build
+@@ -11,6 +11,7 @@ sources = files(
+         'cmdline_mtr.c',
+         'cmdline_tm.c',
+         'cmd_flex_item.c',
++        'cvm_mbuf_bridge.c',
+         'config.c',
+         'csumonly.c',
+         'flowgen.c',
+diff --git a/app/test-pmd/testpmd.c b/app/test-pmd/testpmd.c
+index ffcadf1..af8f2e0 100644
+--- a/app/test-pmd/testpmd.c
++++ b/app/test-pmd/testpmd.c
+@@ -76,6 +76,7 @@
+ #endif
+ 
+ #include "testpmd.h"
++#include "cvm_mbuf_bridge.h"
+ 
+ #ifndef MAP_HUGETLB
+ /* FreeBSD may not have MAP_HUGETLB (in fact, it probably doesn't) */
+@@ -1244,13 +1245,15 @@ cvm_shared_get(size_t size)
+ 
+ static unsigned int
+ setup_extbuf(uint32_t nb_mbufs, uint16_t mbuf_sz, unsigned int socket_id,
+-	    char *pool_name, struct rte_pktmbuf_extmem **ext_mem)
++	    char *pool_name, struct rte_pktmbuf_extmem **ext_mem,
++	    bool *is_cvm_shared)
+ {
+ 	struct rte_pktmbuf_extmem *xmem;
+ 	unsigned int ext_num, zone_num, elt_num;
+ 	uint16_t elt_size;
+ 	void *cvm_base;
+ 
++	*is_cvm_shared = false;
+ 	elt_size = RTE_ALIGN_CEIL(mbuf_sz, RTE_CACHE_LINE_SIZE);
+ 	elt_num = EXTBUF_ZONE_SIZE / elt_size;
+ 	zone_num = (nb_mbufs + elt_num - 1) / elt_num;
+@@ -1287,6 +1290,7 @@ setup_extbuf(uint32_t nb_mbufs, uint16_t mbuf_sz, unsigned int socket_id,
+ 			xseg->elt_size = elt_size;
+ 		}
+ 		*ext_mem = xmem;
++		*is_cvm_shared = true;
+ 		return ext_num;
+ 	}
+ 
+@@ -1351,6 +1355,8 @@ mbuf_pool_create(uint16_t mbuf_seg_size, unsigned nb_mbuf,
+ 			rte_exit(EXIT_FAILURE,
+ 				"Get mbuf pool for socket %u failed: %s\n",
+ 				socket_id, rte_strerror(rte_errno));
++		if (cvm_mbuf_bridge_attach_pool(rte_mp, socket_id, size_idx) != 0)
++			rte_exit(EXIT_FAILURE, "Attach CVM private pool failed\n");
+ 		return rte_mp;
+ 	}
+ 
+@@ -1413,10 +1419,12 @@ mbuf_pool_create(uint16_t mbuf_seg_size, unsigned nb_mbuf,
+ 	case MP_ALLOC_XBUF:
+ 		{
+ 			struct rte_pktmbuf_extmem *ext_mem;
++			bool is_cvm_shared;
+ 			unsigned int ext_num;
+ 
+ 			ext_num = setup_extbuf(nb_mbuf,	mbuf_seg_size,
+-					       socket_id, pool_name, &ext_mem);
++					       socket_id, pool_name, &ext_mem,
++					       &is_cvm_shared);
+ 			if (ext_num == 0)
+ 				rte_exit(EXIT_FAILURE,
+ 					 "Can't create pinned data buffers\n");
+@@ -1428,6 +1436,13 @@ mbuf_pool_create(uint16_t mbuf_seg_size, unsigned nb_mbuf,
+ 					 0, mbuf_seg_size, socket_id,
+ 					 ext_mem, ext_num);
+ 			free(ext_mem);
++			if (rte_mp != NULL && is_cvm_shared &&
++			    cvm_mbuf_bridge_register_pool(rte_mp, nb_mbuf,
++					mb_mempool_cache, mbuf_seg_size,
++					socket_id, size_idx) != 0)
++				rte_exit(EXIT_FAILURE,
++					 "Create CVM private mbuf pool failed: %s\n",
++					 rte_strerror(rte_errno));
+ 			break;
+ 		}
+ 	default:
+diff --git a/app/test-pmd/testpmd.h b/app/test-pmd/testpmd.h
+index f319471..7cd3ab1 100644
+--- a/app/test-pmd/testpmd.h
++++ b/app/test-pmd/testpmd.h
+@@ -18,6 +18,8 @@
+ #include <rte_flow.h>
+ #include <rte_mbuf_dyn.h>
+ 
++#include "cvm_mbuf_bridge.h"
++
+ #include <cmdline.h>
+ #include <cmdline_parse.h>
+ 
+@@ -898,12 +900,18 @@ static inline uint16_t
+ common_fwd_stream_receive(struct fwd_stream *fs, struct rte_mbuf **burst,
+ 	unsigned int nb_pkts)
+ {
++	uint16_t dropped = 0;
+ 	uint16_t nb_rx;
++	uint16_t nb_dma;
+ 
+ 	nb_rx = rte_eth_rx_burst(fs->rx_port, fs->rx_queue, burst, nb_pkts);
+ 	if (record_burst_stats)
+ 		fs->rx_burst_stats.pkt_burst_spread[nb_rx]++;
+ 	fs->rx_packets += nb_rx;
++	nb_dma = nb_rx;
++	if (likely(nb_dma != 0) && cvm_mbuf_bridge_enabled())
++		nb_rx = cvm_mbuf_bridge_rx_copy(burst, nb_dma, &dropped);
++	fs->fwd_dropped += dropped;
+ 	return nb_rx;
+ }
+ 
+@@ -914,6 +922,14 @@ common_fwd_stream_transmit(struct fwd_stream *fs, struct rte_mbuf **burst,
+ 	uint16_t nb_tx;
+ 	uint32_t retry;
+ 
++	if (cvm_mbuf_bridge_enabled() &&
++	    unlikely(cvm_mbuf_bridge_tx_copy(burst, nb_pkts) != 0)) {
++		/* On failure the bridge leaves the original private packets owned
++		 * by the caller, so the common drop path can release them here. */
++		fs->fwd_dropped += nb_pkts;
++		rte_pktmbuf_free_bulk(burst, nb_pkts);
++		return 0;
++	}
+ 	nb_tx = rte_eth_tx_burst(fs->tx_port, fs->tx_queue, burst, nb_pkts);
+ 	/*
+ 	 * Retry if necessary
+-- 
+2.53.0
+

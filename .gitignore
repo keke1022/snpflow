@@ -1,7 +1,40 @@
+# Build products (patches and experiment sources are versioned).
 *.o
 *.ko
-*.mod*
+*.mod
+*.mod.c
+*.mod.o
+.*.cmd
+Module.symvers
+modules.order
+.tmp_versions/
 build/
-snp-probe
-dpdk-patches/*.patch
-dpdk-patches/all.patch
+__pycache__/
+*.py[cod]
+.venv/
+
+# Standalone probe and benchmark executables.
+/snp-probe
+/devx-probe
+/devx-size
+/dmabuf-variants
+/shared-probe
+/verify-probe
+/nop-probe
+/bounds-test
+/scratch/kv-cache-bench/kv_send
+/scratch/shared-copy-bench/copy_bench
+/scratch/cuda-import-probe/cuda_probe
+/scratch/dmabuf-attach-probe/probe_user
+/scratch/cvm-chunk-proto/cvm_chunk_test
+/scratch/cvm-chunk-proto/cvm_chunk_send
+
+# Local credentials and packet captures.
+.env
+.env.*
+!.env.example
+*.pcap
+*.pcapng
+
+# Obsolete full-tree export; never publish it again.
+/dpdk-patches/all.patch

@@ -1,0 +1,1202 @@
+From 470dcb6d66bef44743d43468adc97dd6dfa6d414 Mon Sep 17 00:00:00 2001
+From: CVM DPDK prototype <cvm@example.invalid>
+Date: Tue, 29 Sep 2026 07:47:57 +0000
+Subject: [PATCH] app/testpmd: add authenticated CVM chunk receiver
+
+Add a correctness-first single-queue object receiver above the synchronous
+private-mbuf bridge. Authenticate fixed-size DATA chunks before committing
+them to private object storage, track out-of-order delivery in a private
+bitmap, and return authenticated selective ACKs through the existing TX
+bridge.
+
+Require an explicitly configured L2/L3/L4 peer and reject unsupported packet
+layouts. Keep OpenSSL optional at build time and leave mlx5, the kernel module,
+shared allocation, and the mbuf ABI unchanged.
+
+---
+ app/test-pmd/cvm_chunk_crypto.c   | 149 ++++++++++++++
+ app/test-pmd/cvm_chunk_crypto.h   |  24 +++
+ app/test-pmd/cvm_chunk_fwd.c      | 320 ++++++++++++++++++++++++++++++
+ app/test-pmd/cvm_chunk_packet.c   |  65 ++++++
+ app/test-pmd/cvm_chunk_packet.h   |  20 ++
+ app/test-pmd/cvm_chunk_receiver.c | 194 ++++++++++++++++++
+ app/test-pmd/cvm_chunk_receiver.h |  49 +++++
+ app/test-pmd/cvm_chunk_wire.c     | 177 +++++++++++++++++
+ app/test-pmd/cvm_chunk_wire.h     |  61 ++++++
+ app/test-pmd/meson.build          |   9 +
+ app/test-pmd/testpmd.c            |   3 +
+ app/test-pmd/testpmd.h            |   3 +
+ 12 files changed, 1074 insertions(+)
+ create mode 100644 app/test-pmd/cvm_chunk_crypto.c
+ create mode 100644 app/test-pmd/cvm_chunk_crypto.h
+ create mode 100644 app/test-pmd/cvm_chunk_fwd.c
+ create mode 100644 app/test-pmd/cvm_chunk_packet.c
+ create mode 100644 app/test-pmd/cvm_chunk_packet.h
+ create mode 100644 app/test-pmd/cvm_chunk_receiver.c
+ create mode 100644 app/test-pmd/cvm_chunk_receiver.h
+ create mode 100644 app/test-pmd/cvm_chunk_wire.c
+ create mode 100644 app/test-pmd/cvm_chunk_wire.h
+
+diff --git a/app/test-pmd/cvm_chunk_crypto.c b/app/test-pmd/cvm_chunk_crypto.c
+new file mode 100644
+index 0000000..17af9c4
+--- /dev/null
++++ b/app/test-pmd/cvm_chunk_crypto.c
+@@ -0,0 +1,149 @@
++/* SPDX-License-Identifier: BSD-3-Clause */
++
++#include "cvm_chunk_crypto.h"
++
++#include <errno.h>
++#include <limits.h>
++#include <string.h>
++
++#include <openssl/crypto.h>
++#include <openssl/evp.h>
++
++static int
++hex_nibble(char c)
++{
++	if (c >= '0' && c <= '9')
++		return c - '0';
++	if (c >= 'a' && c <= 'f')
++		return c - 'a' + 10;
++	if (c >= 'A' && c <= 'F')
++		return c - 'A' + 10;
++	return -1;
++}
++
++int
++cvm_chunk_key_parse(uint8_t key[CVM_CHUNK_KEY_SIZE], const char *hex)
++{
++	size_t i;
++
++	if (key == NULL)
++		return -EINVAL;
++	if (hex == NULL || strlen(hex) != CVM_CHUNK_KEY_SIZE * 2) {
++		OPENSSL_cleanse(key, CVM_CHUNK_KEY_SIZE);
++		return -EINVAL;
++	}
++	for (i = 0; i < CVM_CHUNK_KEY_SIZE; i++) {
++		int high = hex_nibble(hex[i * 2]);
++		int low = hex_nibble(hex[i * 2 + 1]);
++
++		if (high < 0 || low < 0) {
++			OPENSSL_cleanse(key, CVM_CHUNK_KEY_SIZE);
++			return -EINVAL;
++		}
++		key[i] = (uint8_t)((high << 4) | low);
++	}
++	return 0;
++}
++
++int
++cvm_chunk_seal(const uint8_t key[CVM_CHUNK_KEY_SIZE],
++		const struct cvm_chunk_header *header,
++		const uint8_t *plaintext, size_t plaintext_len,
++		uint8_t *ciphertext, uint8_t tag[CVM_CHUNK_TAG_SIZE])
++{
++	uint8_t aad[CVM_CHUNK_HEADER_SIZE];
++	uint8_t nonce[CVM_CHUNK_NONCE_SIZE];
++	EVP_CIPHER_CTX *ctx = NULL;
++	int written = 0;
++	int final_written = 0;
++	int ret = -EIO;
++
++	if (key == NULL || header == NULL || plaintext == NULL ||
++	    ciphertext == NULL || tag == NULL || plaintext_len > INT_MAX ||
++	    plaintext_len != header->payload_len ||
++	    header->message_seq > CVM_CHUNK_MAX_MESSAGE_SEQ ||
++	    (header->flags != CVM_CHUNK_F_DATA &&
++	     header->flags != CVM_CHUNK_F_ACK))
++		return -EINVAL;
++	cvm_chunk_header_encode(aad, header);
++	cvm_chunk_nonce(nonce, header);
++	ctx = EVP_CIPHER_CTX_new();
++	if (ctx == NULL)
++		goto out;
++	if (EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL) != 1 ||
++	    EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN,
++				CVM_CHUNK_NONCE_SIZE, NULL) != 1 ||
++	    EVP_EncryptInit_ex(ctx, NULL, NULL, key, nonce) != 1 ||
++	    EVP_EncryptUpdate(ctx, NULL, &written, aad, sizeof(aad)) != 1 ||
++	    EVP_EncryptUpdate(ctx, ciphertext, &written, plaintext,
++			      (int)plaintext_len) != 1 ||
++	    written != (int)plaintext_len ||
++	    EVP_EncryptFinal_ex(ctx, ciphertext + written, &final_written) != 1 ||
++	    final_written != 0 ||
++	    EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG,
++				CVM_CHUNK_TAG_SIZE, tag) != 1)
++		goto out;
++	ret = 0;
++out:
++	if (ret != 0) {
++		OPENSSL_cleanse(ciphertext, plaintext_len);
++		OPENSSL_cleanse(tag, CVM_CHUNK_TAG_SIZE);
++	}
++	EVP_CIPHER_CTX_free(ctx);
++	OPENSSL_cleanse(aad, sizeof(aad));
++	OPENSSL_cleanse(nonce, sizeof(nonce));
++	return ret;
++}
++
++int
++cvm_chunk_open(const uint8_t key[CVM_CHUNK_KEY_SIZE],
++		const struct cvm_chunk_header *header,
++		const uint8_t *ciphertext, size_t ciphertext_len,
++		const uint8_t tag[CVM_CHUNK_TAG_SIZE], uint8_t *plaintext)
++{
++	uint8_t aad[CVM_CHUNK_HEADER_SIZE];
++	uint8_t nonce[CVM_CHUNK_NONCE_SIZE];
++	uint8_t expected_tag[CVM_CHUNK_TAG_SIZE];
++	EVP_CIPHER_CTX *ctx = NULL;
++	int written = 0;
++	int final_written = 0;
++	int ret = -EBADMSG;
++
++	if (key == NULL || header == NULL || ciphertext == NULL || tag == NULL ||
++	    plaintext == NULL || ciphertext_len > INT_MAX ||
++	    ciphertext_len != header->payload_len ||
++	    header->message_seq > CVM_CHUNK_MAX_MESSAGE_SEQ ||
++	    (header->flags != CVM_CHUNK_F_DATA &&
++	     header->flags != CVM_CHUNK_F_ACK))
++		return -EINVAL;
++	cvm_chunk_header_encode(aad, header);
++	cvm_chunk_nonce(nonce, header);
++	memcpy(expected_tag, tag, sizeof(expected_tag));
++	ctx = EVP_CIPHER_CTX_new();
++	if (ctx == NULL) {
++		ret = -EIO;
++		goto out;
++	}
++	if (EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL) != 1 ||
++	    EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN,
++				CVM_CHUNK_NONCE_SIZE, NULL) != 1 ||
++	    EVP_DecryptInit_ex(ctx, NULL, NULL, key, nonce) != 1 ||
++	    EVP_DecryptUpdate(ctx, NULL, &written, aad, sizeof(aad)) != 1 ||
++	    EVP_DecryptUpdate(ctx, plaintext, &written, ciphertext,
++			      (int)ciphertext_len) != 1 ||
++	    written != (int)ciphertext_len ||
++	    EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG,
++				CVM_CHUNK_TAG_SIZE, expected_tag) != 1 ||
++	    EVP_DecryptFinal_ex(ctx, plaintext + written, &final_written) != 1 ||
++	    final_written != 0)
++		goto out;
++	ret = 0;
++out:
++	if (ret != 0)
++		OPENSSL_cleanse(plaintext, ciphertext_len);
++	EVP_CIPHER_CTX_free(ctx);
++	OPENSSL_cleanse(aad, sizeof(aad));
++	OPENSSL_cleanse(nonce, sizeof(nonce));
++	OPENSSL_cleanse(expected_tag, sizeof(expected_tag));
++	return ret;
++}
+diff --git a/app/test-pmd/cvm_chunk_crypto.h b/app/test-pmd/cvm_chunk_crypto.h
+new file mode 100644
+index 0000000..ad0a3b5
+--- /dev/null
++++ b/app/test-pmd/cvm_chunk_crypto.h
+@@ -0,0 +1,24 @@
++/* SPDX-License-Identifier: BSD-3-Clause */
++#ifndef CVM_CHUNK_CRYPTO_H
++#define CVM_CHUNK_CRYPTO_H
++
++#include <stddef.h>
++#include <stdint.h>
++
++#include "cvm_chunk_wire.h"
++
++#define CVM_CHUNK_KEY_SIZE 32U
++
++int cvm_chunk_key_parse(uint8_t key[CVM_CHUNK_KEY_SIZE], const char *hex);
++
++int cvm_chunk_seal(const uint8_t key[CVM_CHUNK_KEY_SIZE],
++		const struct cvm_chunk_header *header,
++		const uint8_t *plaintext, size_t plaintext_len,
++		uint8_t *ciphertext, uint8_t tag[CVM_CHUNK_TAG_SIZE]);
++
++int cvm_chunk_open(const uint8_t key[CVM_CHUNK_KEY_SIZE],
++		const struct cvm_chunk_header *header,
++		const uint8_t *ciphertext, size_t ciphertext_len,
++		const uint8_t tag[CVM_CHUNK_TAG_SIZE], uint8_t *plaintext);
++
++#endif /* CVM_CHUNK_CRYPTO_H */
+diff --git a/app/test-pmd/cvm_chunk_fwd.c b/app/test-pmd/cvm_chunk_fwd.c
+new file mode 100644
+index 0000000..170879d
+--- /dev/null
++++ b/app/test-pmd/cvm_chunk_fwd.c
+@@ -0,0 +1,320 @@
++/* SPDX-License-Identifier: BSD-3-Clause */
++
++#include <arpa/inet.h>
++#include <errno.h>
++#include <inttypes.h>
++#include <stdbool.h>
++#include <stdint.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++#include <openssl/evp.h>
++
++#include <rte_byteorder.h>
++#include <rte_ether.h>
++#include <rte_ethdev.h>
++#include <rte_ip.h>
++#include <rte_mbuf.h>
++#include <rte_udp.h>
++
++#include "cvm_chunk_receiver.h"
++#include "cvm_mbuf_bridge.h"
++#include "testpmd.h"
++
++#define CVM_CHUNK_UDP_PORT 9000U
++#define CVM_CHUNK_DEFAULT_MAX_OBJECT (UINT64_C(64) * 1024 * 1024)
++#define CVM_CHUNK_HARD_MAX_OBJECT (UINT64_C(1) * 1024 * 1024 * 1024)
++
++struct cvm_chunk_endpoint {
++	struct rte_ether_addr peer_mac;
++	struct rte_ether_addr local_mac;
++	uint32_t peer_ipv4;
++	uint32_t local_ipv4;
++	uint16_t peer_udp_port;
++};
++
++struct cvm_chunk_fwd_state {
++	struct cvm_chunk_receiver receiver;
++	struct cvm_chunk_endpoint endpoint;
++	uint64_t accepted;
++	uint64_t duplicates;
++	uint64_t rejected;
++	uint64_t acks;
++	bool started;
++	bool completion_reported;
++};
++
++static struct cvm_chunk_fwd_state cvm_state;
++
++static int
++parse_u64(const char *text, uint64_t *value)
++{
++	char *end;
++	unsigned long long parsed;
++
++	if (text == NULL || text[0] == '\0')
++		return -EINVAL;
++	errno = 0;
++	parsed = strtoull(text, &end, 0);
++	if (errno != 0 || *end != '\0')
++		return -EINVAL;
++	*value = (uint64_t)parsed;
++	return 0;
++}
++
++static int
++read_endpoint(portid_t port, struct cvm_chunk_endpoint *endpoint)
++{
++	const char *peer_ip = getenv("CVM_CHUNK_PEER_IPV4");
++	const char *local_ip = getenv("CVM_CHUNK_LOCAL_IPV4");
++	const char *peer_mac = getenv("CVM_CHUNK_PEER_MAC");
++	const char *peer_port = getenv("CVM_CHUNK_PEER_UDP_PORT");
++	uint64_t parsed_port;
++
++	if (peer_ip == NULL || local_ip == NULL || peer_mac == NULL ||
++	    peer_port == NULL ||
++	    inet_pton(AF_INET, peer_ip, &endpoint->peer_ipv4) != 1 ||
++	    inet_pton(AF_INET, local_ip, &endpoint->local_ipv4) != 1 ||
++	    rte_ether_unformat_addr(peer_mac, &endpoint->peer_mac) != 0 ||
++	    parse_u64(peer_port, &parsed_port) != 0 || parsed_port == 0 ||
++	    parsed_port > UINT16_MAX ||
++	    rte_eth_macaddr_get(port, &endpoint->local_mac) != 0)
++		return -EINVAL;
++	endpoint->peer_udp_port = (uint16_t)parsed_port;
++	return 0;
++}
++
++static int
++cvm_chunk_begin(portid_t port)
++{
++	const char *key_hex = getenv("CVM_CHUNK_KEY_HEX");
++	const char *max_text = getenv("CVM_CHUNK_MAX_OBJECT");
++	uint64_t max_object = CVM_CHUNK_DEFAULT_MAX_OBJECT;
++	uint8_t key[CVM_CHUNK_KEY_SIZE];
++	int ret;
++
++	if (cvm_state.started)
++		return -EALREADY;
++	if (!cvm_mbuf_bridge_enabled() || cur_fwd_config.nb_fwd_ports != 1 ||
++	    cur_fwd_config.nb_fwd_streams != 1 ||
++	    cur_fwd_config.nb_fwd_lcores != 1 || nb_rxq != 1 || nb_txq != 1) {
++		fprintf(stderr, "cvmchunk requires the CVM bridge and exactly one "
++			"port, RX queue, TX queue, stream, and forwarding lcore\n");
++		return -EINVAL;
++	}
++	if (max_text != NULL && parse_u64(max_text, &max_object) != 0)
++		return -EINVAL;
++	if (max_object == 0 || max_object > CVM_CHUNK_HARD_MAX_OBJECT) {
++		fprintf(stderr, "CVM_CHUNK_MAX_OBJECT must be in [1, 1 GiB]\n");
++		return -EINVAL;
++	}
++	if (cvm_chunk_key_parse(key, key_hex) != 0) {
++		fprintf(stderr, "CVM_CHUNK_KEY_HEX must contain 64 hex digits\n");
++		return -EINVAL;
++	}
++	memset(&cvm_state, 0, sizeof(cvm_state));
++	ret = read_endpoint(port, &cvm_state.endpoint);
++	if (ret == 0)
++		ret = cvm_chunk_receiver_init(&cvm_state.receiver, key,
++					      max_object);
++	OPENSSL_cleanse(key, sizeof(key));
++	if (ret != 0) {
++		fprintf(stderr, "invalid CVM chunk endpoint configuration\n");
++		return ret;
++	}
++	cvm_state.started = true;
++	printf("cvmchunk: private authenticated receiver ready; max_object=%" PRIu64
++	       " bytes\n", max_object);
++	return 0;
++}
++
++static void
++cvm_chunk_end(portid_t port __rte_unused)
++{
++	if (!cvm_state.started)
++		return;
++	printf("cvmchunk: accepted=%" PRIu64 " duplicates=%" PRIu64
++	       " rejected=%" PRIu64 " acks=%" PRIu64 "\n",
++	       cvm_state.accepted, cvm_state.duplicates, cvm_state.rejected,
++	       cvm_state.acks);
++	cvm_chunk_receiver_destroy(&cvm_state.receiver);
++	memset(&cvm_state, 0, sizeof(cvm_state));
++}
++
++static int
++parse_data_packet(const struct rte_mbuf *m, uint8_t frame[RTE_ETHER_MAX_LEN],
++		const uint8_t **payload, size_t *payload_len)
++{
++	struct rte_ether_hdr eth;
++	struct rte_ipv4_hdr ip;
++	struct rte_udp_hdr udp;
++	const uint8_t *data;
++	uint16_t ip_len;
++	uint16_t udp_len;
++	uint16_t fragment;
++	size_t udp_offset = sizeof(eth) + sizeof(ip);
++
++	if (m->pkt_len < udp_offset + sizeof(udp) ||
++	    m->pkt_len > RTE_ETHER_MAX_LEN)
++		return -EMSGSIZE;
++	data = rte_pktmbuf_read(m, 0, m->pkt_len, frame);
++	if (data == NULL)
++		return -EMSGSIZE;
++	memcpy(&eth, data, sizeof(eth));
++	memcpy(&ip, data + sizeof(eth), sizeof(ip));
++	memcpy(&udp, data + udp_offset, sizeof(udp));
++	if (eth.ether_type != rte_cpu_to_be_16(RTE_ETHER_TYPE_IPV4) ||
++	    !rte_is_same_ether_addr(&eth.src_addr,
++				    &cvm_state.endpoint.peer_mac) ||
++	    !rte_is_same_ether_addr(&eth.dst_addr,
++				    &cvm_state.endpoint.local_mac) ||
++	    ip.version_ihl != RTE_IPV4_VHL_DEF || ip.next_proto_id != IPPROTO_UDP ||
++	    ip.src_addr != cvm_state.endpoint.peer_ipv4 ||
++	    ip.dst_addr != cvm_state.endpoint.local_ipv4 ||
++	    udp.src_port != rte_cpu_to_be_16(cvm_state.endpoint.peer_udp_port) ||
++	    udp.dst_port != rte_cpu_to_be_16(CVM_CHUNK_UDP_PORT))
++		return -EPROTO;
++	fragment = rte_be_to_cpu_16(ip.fragment_offset);
++	if ((fragment & (RTE_IPV4_HDR_MF_FLAG | RTE_IPV4_HDR_OFFSET_MASK)) != 0)
++		return -EPROTO;
++	ip_len = rte_be_to_cpu_16(ip.total_length);
++	udp_len = rte_be_to_cpu_16(udp.dgram_len);
++	if (ip_len < sizeof(ip) + sizeof(udp) ||
++	    udp_len != ip_len - sizeof(ip) ||
++	    m->pkt_len < sizeof(eth) + ip_len)
++		return -EMSGSIZE;
++	*payload = data + udp_offset + sizeof(udp);
++	*payload_len = udp_len - sizeof(udp);
++	return 0;
++}
++
++static struct rte_mbuf *
++make_ack(struct rte_mempool *pool)
++{
++	uint8_t ack[CVM_CHUNK_MAX_UDP_PAYLOAD];
++	struct rte_ether_hdr eth = {0};
++	struct rte_ipv4_hdr ip = {0};
++	struct rte_udp_hdr udp = {0};
++	struct rte_mbuf *m;
++	uint8_t *data;
++	size_t ack_len;
++	size_t packet_len;
++	int ret;
++
++	ret = cvm_chunk_receiver_build_ack(&cvm_state.receiver, ack,
++					   sizeof(ack), &ack_len);
++	if (ret != 0)
++		return NULL;
++	packet_len = sizeof(eth) + sizeof(ip) + sizeof(udp) + ack_len;
++	m = rte_pktmbuf_alloc(pool);
++	if (m == NULL)
++		return NULL;
++	data = (uint8_t *)rte_pktmbuf_append(m, (uint16_t)packet_len);
++	if (data == NULL) {
++		rte_pktmbuf_free(m);
++		return NULL;
++	}
++	eth.src_addr = cvm_state.endpoint.local_mac;
++	eth.dst_addr = cvm_state.endpoint.peer_mac;
++	eth.ether_type = rte_cpu_to_be_16(RTE_ETHER_TYPE_IPV4);
++	ip.version_ihl = RTE_IPV4_VHL_DEF;
++	ip.total_length = rte_cpu_to_be_16((uint16_t)(sizeof(ip) + sizeof(udp) +
++						       ack_len));
++	ip.time_to_live = 64;
++	ip.next_proto_id = IPPROTO_UDP;
++	ip.src_addr = cvm_state.endpoint.local_ipv4;
++	ip.dst_addr = cvm_state.endpoint.peer_ipv4;
++	ip.hdr_checksum = rte_ipv4_cksum(&ip);
++	udp.src_port = rte_cpu_to_be_16(CVM_CHUNK_UDP_PORT);
++	udp.dst_port = rte_cpu_to_be_16(cvm_state.endpoint.peer_udp_port);
++	udp.dgram_len = rte_cpu_to_be_16((uint16_t)(sizeof(udp) + ack_len));
++	/* A zero UDP checksum is valid for IPv4; AEAD protects the payload. */
++	memcpy(data, &eth, sizeof(eth));
++	memcpy(data + sizeof(eth), &ip, sizeof(ip));
++	memcpy(data + sizeof(eth) + sizeof(ip), &udp, sizeof(udp));
++	memcpy(data + sizeof(eth) + sizeof(ip) + sizeof(udp), ack, ack_len);
++	OPENSSL_cleanse(ack, sizeof(ack));
++	return m;
++}
++
++static void
++report_complete(void)
++{
++	uint8_t digest[EVP_MAX_MD_SIZE];
++	unsigned int digest_len = 0;
++	unsigned int i;
++
++	if (cvm_state.completion_reported)
++		return;
++	if (EVP_Digest(cvm_state.receiver.object,
++		       (size_t)cvm_state.receiver.object_len, digest, &digest_len,
++		       EVP_sha256(), NULL) != 1)
++		return;
++	printf("cvmchunk_complete=PASS object_id=%016" PRIx64
++	       " bytes=%" PRIu64 " sha256=",
++	       cvm_state.receiver.object_id, cvm_state.receiver.object_len);
++	for (i = 0; i < digest_len; i++)
++		printf("%02x", digest[i]);
++	printf("\n");
++	OPENSSL_cleanse(digest, sizeof(digest));
++	cvm_state.completion_reported = true;
++}
++
++static bool
++pkt_burst_cvm_chunk(struct fwd_stream *fs)
++{
++	struct rte_mbuf *rx[MAX_PKT_BURST];
++	struct rte_mbuf *tx[MAX_PKT_BURST];
++	uint16_t nb_rx;
++	uint16_t nb_tx = 0;
++	uint16_t i;
++
++	nb_rx = common_fwd_stream_receive(fs, rx, nb_pkt_per_burst);
++	if (unlikely(nb_rx == 0))
++		return false;
++	for (i = 0; i < nb_rx; i++) {
++		uint8_t frame[RTE_ETHER_MAX_LEN];
++		const uint8_t *payload;
++		size_t payload_len;
++		enum cvm_chunk_accept_result result;
++		struct rte_mbuf *ack;
++		int ret;
++
++		ret = parse_data_packet(rx[i], frame, &payload, &payload_len);
++		if (ret == 0)
++			ret = cvm_chunk_receiver_accept(&cvm_state.receiver, payload,
++						payload_len, &result);
++		if (ret != 0) {
++			cvm_state.rejected++;
++			fs->fwd_dropped++;
++			rte_pktmbuf_free(rx[i]);
++			continue;
++		}
++		if (result == CVM_CHUNK_ACCEPT_DUPLICATE)
++			cvm_state.duplicates++;
++		else
++			cvm_state.accepted++;
++		if (result == CVM_CHUNK_ACCEPT_COMPLETE)
++			report_complete();
++		ack = make_ack(rx[i]->pool);
++		rte_pktmbuf_free(rx[i]);
++		if (ack == NULL) {
++			fs->fwd_dropped++;
++			continue;
++		}
++		tx[nb_tx++] = ack;
++		cvm_state.acks++;
++	}
++	if (nb_tx != 0)
++		common_fwd_stream_transmit(fs, tx, nb_tx);
++	return true;
++}
++
++struct fwd_engine cvm_chunk_engine = {
++	.fwd_mode_name = "cvmchunk",
++	.port_fwd_begin = cvm_chunk_begin,
++	.port_fwd_end = cvm_chunk_end,
++	.stream_init = common_fwd_stream_init,
++	.packet_fwd = pkt_burst_cvm_chunk,
++};
+diff --git a/app/test-pmd/cvm_chunk_packet.c b/app/test-pmd/cvm_chunk_packet.c
+new file mode 100644
+index 0000000..51e3cfe
+--- /dev/null
++++ b/app/test-pmd/cvm_chunk_packet.c
+@@ -0,0 +1,65 @@
++/* SPDX-License-Identifier: BSD-3-Clause */
++
++#include "cvm_chunk_packet.h"
++
++#include <errno.h>
++
++int
++cvm_chunk_packet_build(const uint8_t key[CVM_CHUNK_KEY_SIZE],
++		const struct cvm_chunk_header *header,
++		const uint8_t *plaintext, uint8_t *packet, size_t packet_capacity,
++		size_t *packet_len)
++{
++	size_t required;
++	int ret;
++
++	if (key == NULL || header == NULL || plaintext == NULL || packet == NULL ||
++	    packet_len == NULL || header->payload_len > CVM_CHUNK_DATA_SIZE ||
++	    header->message_seq > CVM_CHUNK_MAX_MESSAGE_SEQ ||
++	    (header->flags != CVM_CHUNK_F_DATA &&
++	     header->flags != CVM_CHUNK_F_ACK))
++		return -EINVAL;
++	required = CVM_CHUNK_HEADER_SIZE + header->payload_len +
++		   CVM_CHUNK_TAG_SIZE;
++	if (packet_capacity < required)
++		return -ENOSPC;
++	cvm_chunk_header_encode(packet, header);
++	ret = cvm_chunk_seal(key, header, plaintext, header->payload_len,
++			     packet + CVM_CHUNK_HEADER_SIZE,
++			     packet + CVM_CHUNK_HEADER_SIZE + header->payload_len);
++	if (ret != 0)
++		return ret;
++	*packet_len = required;
++	return 0;
++}
++
++int
++cvm_chunk_packet_open(const uint8_t key[CVM_CHUNK_KEY_SIZE],
++		const uint8_t *packet, size_t packet_len,
++		struct cvm_chunk_header *header, uint8_t *plaintext,
++		size_t plaintext_capacity)
++{
++	size_t required;
++	int ret;
++
++	if (key == NULL || packet == NULL || header == NULL || plaintext == NULL)
++		return -EINVAL;
++	ret = cvm_chunk_header_decode(header, packet, packet_len);
++	if (ret != 0)
++		return ret;
++	if (header->payload_len > CVM_CHUNK_DATA_SIZE ||
++	    header->message_seq > CVM_CHUNK_MAX_MESSAGE_SEQ ||
++	    (header->flags != CVM_CHUNK_F_DATA &&
++	     header->flags != CVM_CHUNK_F_ACK))
++		return -EPROTO;
++	if (plaintext_capacity < header->payload_len)
++		return -EMSGSIZE;
++	required = CVM_CHUNK_HEADER_SIZE + header->payload_len +
++		   CVM_CHUNK_TAG_SIZE;
++	if (packet_len != required)
++		return -EMSGSIZE;
++	return cvm_chunk_open(key, header, packet + CVM_CHUNK_HEADER_SIZE,
++			header->payload_len,
++			packet + CVM_CHUNK_HEADER_SIZE + header->payload_len,
++			plaintext);
++}
+diff --git a/app/test-pmd/cvm_chunk_packet.h b/app/test-pmd/cvm_chunk_packet.h
+new file mode 100644
+index 0000000..bd698fb
+--- /dev/null
++++ b/app/test-pmd/cvm_chunk_packet.h
+@@ -0,0 +1,20 @@
++/* SPDX-License-Identifier: BSD-3-Clause */
++#ifndef CVM_CHUNK_PACKET_H
++#define CVM_CHUNK_PACKET_H
++
++#include <stddef.h>
++#include <stdint.h>
++
++#include "cvm_chunk_crypto.h"
++
++int cvm_chunk_packet_build(const uint8_t key[CVM_CHUNK_KEY_SIZE],
++		const struct cvm_chunk_header *header,
++		const uint8_t *plaintext, uint8_t *packet, size_t packet_capacity,
++		size_t *packet_len);
++
++int cvm_chunk_packet_open(const uint8_t key[CVM_CHUNK_KEY_SIZE],
++		const uint8_t *packet, size_t packet_len,
++		struct cvm_chunk_header *header, uint8_t *plaintext,
++		size_t plaintext_capacity);
++
++#endif /* CVM_CHUNK_PACKET_H */
+diff --git a/app/test-pmd/cvm_chunk_receiver.c b/app/test-pmd/cvm_chunk_receiver.c
+new file mode 100644
+index 0000000..8b567fc
+--- /dev/null
++++ b/app/test-pmd/cvm_chunk_receiver.c
+@@ -0,0 +1,194 @@
++/* SPDX-License-Identifier: BSD-3-Clause */
++
++#include "cvm_chunk_receiver.h"
++
++#include <errno.h>
++#include <stdlib.h>
++#include <string.h>
++
++#include <openssl/crypto.h>
++
++static void
++bitmap_set(struct cvm_chunk_receiver *receiver, uint64_t chunk_id)
++{
++	receiver->bitmap[chunk_id / 64] |= UINT64_C(1) << (chunk_id % 64);
++}
++
++bool
++cvm_chunk_receiver_has(const struct cvm_chunk_receiver *receiver,
++		uint64_t chunk_id)
++{
++	if (receiver == NULL || !receiver->initialized ||
++	    chunk_id >= receiver->total_chunks)
++		return false;
++	return (receiver->bitmap[chunk_id / 64] &
++		(UINT64_C(1) << (chunk_id % 64))) != 0;
++}
++
++static int
++receiver_start_object(struct cvm_chunk_receiver *receiver,
++		const struct cvm_chunk_header *header)
++{
++	size_t bitmap_words;
++
++	if (header->object_len > SIZE_MAX ||
++	    header->total_chunks > (uint64_t)SIZE_MAX - 63)
++		return -EOVERFLOW;
++	bitmap_words = (size_t)((header->total_chunks + 63) / 64);
++	if (bitmap_words > SIZE_MAX / sizeof(*receiver->bitmap))
++		return -EOVERFLOW;
++	receiver->object = calloc(1, (size_t)header->object_len);
++	receiver->bitmap = calloc(bitmap_words, sizeof(*receiver->bitmap));
++	if (receiver->object == NULL || receiver->bitmap == NULL) {
++		free(receiver->object);
++		free(receiver->bitmap);
++		receiver->object = NULL;
++		receiver->bitmap = NULL;
++		return -ENOMEM;
++	}
++	receiver->session_id = header->session_id;
++	receiver->object_id = header->object_id;
++	receiver->object_len = header->object_len;
++	receiver->total_chunks = header->total_chunks;
++	receiver->key_epoch = header->key_epoch;
++	receiver->bitmap_words = bitmap_words;
++	receiver->received_chunks = 0;
++	receiver->ack_base = 0;
++	receiver->ack_message_seq = 0;
++	receiver->initialized = true;
++	return 0;
++}
++
++static bool
++same_object(const struct cvm_chunk_receiver *receiver,
++		const struct cvm_chunk_header *header)
++{
++	return receiver->session_id == header->session_id &&
++	       receiver->object_id == header->object_id &&
++	       receiver->object_len == header->object_len &&
++	       receiver->total_chunks == header->total_chunks &&
++	       receiver->key_epoch == header->key_epoch;
++}
++
++int
++cvm_chunk_receiver_init(struct cvm_chunk_receiver *receiver,
++		const uint8_t key[CVM_CHUNK_KEY_SIZE], uint64_t max_object_len)
++{
++	if (receiver == NULL || key == NULL || max_object_len == 0 ||
++	    max_object_len > SIZE_MAX)
++		return -EINVAL;
++	memset(receiver, 0, sizeof(*receiver));
++	memcpy(receiver->key, key, CVM_CHUNK_KEY_SIZE);
++	receiver->max_object_len = max_object_len;
++	return 0;
++}
++
++void
++cvm_chunk_receiver_destroy(struct cvm_chunk_receiver *receiver)
++{
++	if (receiver == NULL)
++		return;
++	if (receiver->object != NULL) {
++		OPENSSL_cleanse(receiver->object, (size_t)receiver->object_len);
++		free(receiver->object);
++	}
++	if (receiver->bitmap != NULL) {
++		OPENSSL_cleanse(receiver->bitmap,
++				receiver->bitmap_words * sizeof(*receiver->bitmap));
++		free(receiver->bitmap);
++	}
++	OPENSSL_cleanse(receiver, sizeof(*receiver));
++}
++
++int
++cvm_chunk_receiver_accept(struct cvm_chunk_receiver *receiver,
++		const uint8_t *packet, size_t packet_len,
++		enum cvm_chunk_accept_result *result)
++{
++	uint8_t plaintext[CVM_CHUNK_DATA_SIZE];
++	struct cvm_chunk_header header;
++	uint64_t offset;
++	int ret;
++
++	if (receiver == NULL || packet == NULL || result == NULL)
++		return -EINVAL;
++	ret = cvm_chunk_packet_open(receiver->key, packet, packet_len, &header,
++				    plaintext, sizeof(plaintext));
++	if (ret != 0)
++		goto out;
++	ret = cvm_chunk_data_header_validate(&header,
++			receiver->max_object_len);
++	if (ret != 0)
++		goto out;
++	/* No allocation or receiver-state mutation occurs before authentication. */
++	if (!receiver->initialized) {
++		ret = receiver_start_object(receiver, &header);
++		if (ret != 0)
++			goto out;
++	} else if (!same_object(receiver, &header)) {
++		ret = -EXDEV;
++		goto out;
++	}
++	if (cvm_chunk_receiver_has(receiver, header.chunk_id)) {
++		*result = CVM_CHUNK_ACCEPT_DUPLICATE;
++		ret = 0;
++		goto out;
++	}
++	ret = cvm_chunk_data_offset(&header, &offset);
++	if (ret != 0 || offset > receiver->object_len - header.payload_len) {
++		ret = -EOVERFLOW;
++		goto out;
++	}
++	memcpy(receiver->object + offset, plaintext, header.payload_len);
++	/* Commit the replay/placement state only after authentication and copy. */
++	bitmap_set(receiver, header.chunk_id);
++	receiver->received_chunks++;
++	while (receiver->ack_base < receiver->total_chunks &&
++	       cvm_chunk_receiver_has(receiver, receiver->ack_base))
++		receiver->ack_base++;
++	*result = receiver->received_chunks == receiver->total_chunks ?
++		CVM_CHUNK_ACCEPT_COMPLETE : CVM_CHUNK_ACCEPT_NEW;
++	ret = 0;
++out:
++	OPENSSL_cleanse(plaintext, sizeof(plaintext));
++	return ret;
++}
++
++int
++cvm_chunk_receiver_build_ack(struct cvm_chunk_receiver *receiver,
++		uint8_t *packet, size_t packet_capacity, size_t *packet_len)
++{
++	uint8_t plaintext[CVM_CHUNK_ACK_BITMAP_SIZE];
++	struct cvm_chunk_header header;
++	uint64_t bitmap = 0;
++	uint64_t i;
++	int ret;
++
++	if (receiver == NULL || !receiver->initialized || packet == NULL ||
++	    packet_len == NULL ||
++	    receiver->ack_message_seq > CVM_CHUNK_MAX_MESSAGE_SEQ)
++		return -EINVAL;
++	for (i = 0; i < 64 && receiver->ack_base + i < receiver->total_chunks;
++	     i++) {
++		if (cvm_chunk_receiver_has(receiver, receiver->ack_base + i))
++			bitmap |= UINT64_C(1) << i;
++	}
++	cvm_chunk_ack_bitmap_encode(plaintext, bitmap);
++	header = (struct cvm_chunk_header) {
++		.flags = CVM_CHUNK_F_ACK,
++		.key_epoch = receiver->key_epoch,
++		.session_id = receiver->session_id,
++		.object_id = receiver->object_id,
++		.chunk_id = receiver->ack_base,
++		.total_chunks = receiver->total_chunks,
++		.object_len = receiver->object_len,
++		.message_seq = receiver->ack_message_seq,
++		.payload_len = CVM_CHUNK_ACK_BITMAP_SIZE,
++	};
++	ret = cvm_chunk_packet_build(receiver->key, &header, plaintext, packet,
++				     packet_capacity, packet_len);
++	if (ret == 0)
++		receiver->ack_message_seq++;
++	OPENSSL_cleanse(plaintext, sizeof(plaintext));
++	return ret;
++}
+diff --git a/app/test-pmd/cvm_chunk_receiver.h b/app/test-pmd/cvm_chunk_receiver.h
+new file mode 100644
+index 0000000..510af24
+--- /dev/null
++++ b/app/test-pmd/cvm_chunk_receiver.h
+@@ -0,0 +1,49 @@
++/* SPDX-License-Identifier: BSD-3-Clause */
++#ifndef CVM_CHUNK_RECEIVER_H
++#define CVM_CHUNK_RECEIVER_H
++
++#include <stdbool.h>
++#include <stddef.h>
++#include <stdint.h>
++
++#include "cvm_chunk_packet.h"
++
++enum cvm_chunk_accept_result {
++	CVM_CHUNK_ACCEPT_NEW = 0,
++	CVM_CHUNK_ACCEPT_DUPLICATE,
++	CVM_CHUNK_ACCEPT_COMPLETE,
++};
++
++struct cvm_chunk_receiver {
++	uint8_t key[CVM_CHUNK_KEY_SIZE];
++	uint64_t max_object_len;
++	uint64_t session_id;
++	uint64_t object_id;
++	uint64_t object_len;
++	uint64_t total_chunks;
++	uint64_t received_chunks;
++	uint64_t ack_base;
++	uint64_t ack_message_seq;
++	uint32_t key_epoch;
++	uint8_t *object;
++	uint64_t *bitmap;
++	size_t bitmap_words;
++	bool initialized;
++};
++
++int cvm_chunk_receiver_init(struct cvm_chunk_receiver *receiver,
++		const uint8_t key[CVM_CHUNK_KEY_SIZE], uint64_t max_object_len);
++
++void cvm_chunk_receiver_destroy(struct cvm_chunk_receiver *receiver);
++
++int cvm_chunk_receiver_accept(struct cvm_chunk_receiver *receiver,
++		const uint8_t *packet, size_t packet_len,
++		enum cvm_chunk_accept_result *result);
++
++int cvm_chunk_receiver_build_ack(struct cvm_chunk_receiver *receiver,
++		uint8_t *packet, size_t packet_capacity, size_t *packet_len);
++
++bool cvm_chunk_receiver_has(const struct cvm_chunk_receiver *receiver,
++		uint64_t chunk_id);
++
++#endif /* CVM_CHUNK_RECEIVER_H */
+diff --git a/app/test-pmd/cvm_chunk_wire.c b/app/test-pmd/cvm_chunk_wire.c
+new file mode 100644
+index 0000000..ca8bcff
+--- /dev/null
++++ b/app/test-pmd/cvm_chunk_wire.c
+@@ -0,0 +1,177 @@
++/* SPDX-License-Identifier: BSD-3-Clause */
++
++#include "cvm_chunk_wire.h"
++
++#include <errno.h>
++#include <limits.h>
++
++static void
++put_u16(uint8_t *p, uint16_t value)
++{
++	p[0] = (uint8_t)(value >> 8);
++	p[1] = (uint8_t)value;
++}
++
++static void
++put_u32(uint8_t *p, uint32_t value)
++{
++	p[0] = (uint8_t)(value >> 24);
++	p[1] = (uint8_t)(value >> 16);
++	p[2] = (uint8_t)(value >> 8);
++	p[3] = (uint8_t)value;
++}
++
++static void
++put_u64(uint8_t *p, uint64_t value)
++{
++	put_u32(p, (uint32_t)(value >> 32));
++	put_u32(p + 4, (uint32_t)value);
++}
++
++static uint16_t
++get_u16(const uint8_t *p)
++{
++	return (uint16_t)(((uint16_t)p[0] << 8) | p[1]);
++}
++
++static uint32_t
++get_u32(const uint8_t *p)
++{
++	return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) |
++	       ((uint32_t)p[2] << 8) | p[3];
++}
++
++static uint64_t
++get_u64(const uint8_t *p)
++{
++	return ((uint64_t)get_u32(p) << 32) | get_u32(p + 4);
++}
++
++void
++cvm_chunk_header_encode(uint8_t out[CVM_CHUNK_HEADER_SIZE],
++		const struct cvm_chunk_header *header)
++{
++	put_u32(out + 0, CVM_CHUNK_MAGIC);
++	put_u16(out + 4, CVM_CHUNK_VERSION);
++	put_u16(out + 6, CVM_CHUNK_HEADER_SIZE);
++	put_u32(out + 8, header->flags);
++	put_u32(out + 12, header->key_epoch);
++	put_u64(out + 16, header->session_id);
++	put_u64(out + 24, header->object_id);
++	put_u64(out + 32, header->chunk_id);
++	put_u64(out + 40, header->total_chunks);
++	put_u64(out + 48, header->object_len);
++	put_u64(out + 56, header->message_seq);
++	put_u32(out + 64, header->payload_len);
++	put_u32(out + 68, 0);
++}
++
++int
++cvm_chunk_header_decode(struct cvm_chunk_header *header,
++		const uint8_t *wire, size_t wire_len)
++{
++	if (header == NULL || wire == NULL || wire_len < CVM_CHUNK_HEADER_SIZE)
++		return -EMSGSIZE;
++	if (get_u32(wire + 0) != CVM_CHUNK_MAGIC ||
++	    get_u16(wire + 4) != CVM_CHUNK_VERSION ||
++	    get_u16(wire + 6) != CVM_CHUNK_HEADER_SIZE ||
++	    get_u32(wire + 68) != 0)
++		return -EPROTO;
++	header->flags = get_u32(wire + 8);
++	header->key_epoch = get_u32(wire + 12);
++	header->session_id = get_u64(wire + 16);
++	header->object_id = get_u64(wire + 24);
++	header->chunk_id = get_u64(wire + 32);
++	header->total_chunks = get_u64(wire + 40);
++	header->object_len = get_u64(wire + 48);
++	header->message_seq = get_u64(wire + 56);
++	header->payload_len = get_u32(wire + 64);
++	return 0;
++}
++
++int
++cvm_chunk_data_offset(const struct cvm_chunk_header *header, uint64_t *offset)
++{
++	if (header == NULL || offset == NULL ||
++	    header->chunk_id > UINT64_MAX / CVM_CHUNK_DATA_SIZE)
++		return -EOVERFLOW;
++	*offset = header->chunk_id * CVM_CHUNK_DATA_SIZE;
++	return 0;
++}
++
++int
++cvm_chunk_data_header_validate(const struct cvm_chunk_header *header,
++		uint64_t max_object_len)
++{
++	uint64_t expected_chunks;
++	uint64_t expected_len;
++	uint64_t offset;
++
++	if (header == NULL || header->flags != CVM_CHUNK_F_DATA ||
++	    header->session_id == 0 || header->object_id == 0 ||
++	    header->object_len == 0 || header->object_len > max_object_len ||
++	    header->message_seq != header->chunk_id ||
++	    header->message_seq > CVM_CHUNK_MAX_MESSAGE_SEQ)
++		return -EINVAL;
++	/* Division plus remainder avoids overflowing object_len near UINT64_MAX. */
++	expected_chunks = header->object_len / CVM_CHUNK_DATA_SIZE;
++	expected_chunks += header->object_len % CVM_CHUNK_DATA_SIZE != 0;
++	/* Every DATA chunk uses chunk_id as its 31-bit nonce sequence. */
++	if (expected_chunks > CVM_CHUNK_MAX_MESSAGE_SEQ + 1 ||
++	    header->total_chunks != expected_chunks ||
++	    header->chunk_id >= header->total_chunks)
++		return -EINVAL;
++	if (cvm_chunk_data_offset(header, &offset) != 0 ||
++	    offset >= header->object_len)
++		return -EINVAL;
++	expected_len = header->object_len - offset;
++	if (expected_len > CVM_CHUNK_DATA_SIZE)
++		expected_len = CVM_CHUNK_DATA_SIZE;
++	if (header->payload_len != expected_len)
++		return -EINVAL;
++	return 0;
++}
++
++int
++cvm_chunk_ack_header_validate(const struct cvm_chunk_header *header,
++		uint64_t expected_session_id, uint64_t expected_object_id,
++		uint64_t expected_total_chunks, uint64_t expected_object_len,
++		uint32_t expected_key_epoch)
++{
++	if (header == NULL || header->flags != CVM_CHUNK_F_ACK ||
++	    header->session_id != expected_session_id ||
++	    header->object_id != expected_object_id ||
++	    header->total_chunks != expected_total_chunks ||
++	    header->object_len != expected_object_len ||
++	    header->key_epoch != expected_key_epoch ||
++	    header->payload_len != CVM_CHUNK_ACK_BITMAP_SIZE ||
++	    header->chunk_id > header->total_chunks ||
++	    header->message_seq > CVM_CHUNK_MAX_MESSAGE_SEQ)
++		return -EINVAL;
++	return 0;
++}
++
++void
++cvm_chunk_nonce(uint8_t nonce[CVM_CHUNK_NONCE_SIZE],
++		const struct cvm_chunk_header *header)
++{
++	uint32_t suffix = (uint32_t)header->message_seq;
++
++	if (header->flags == CVM_CHUNK_F_ACK)
++		suffix |= UINT32_C(0x80000000);
++	put_u64(nonce, header->object_id);
++	put_u32(nonce + 8, suffix);
++}
++
++void
++cvm_chunk_ack_bitmap_encode(uint8_t out[CVM_CHUNK_ACK_BITMAP_SIZE],
++		uint64_t bitmap)
++{
++	put_u64(out, bitmap);
++}
++
++uint64_t
++cvm_chunk_ack_bitmap_decode(const uint8_t in[CVM_CHUNK_ACK_BITMAP_SIZE])
++{
++	return get_u64(in);
++}
+diff --git a/app/test-pmd/cvm_chunk_wire.h b/app/test-pmd/cvm_chunk_wire.h
+new file mode 100644
+index 0000000..8445d39
+--- /dev/null
++++ b/app/test-pmd/cvm_chunk_wire.h
+@@ -0,0 +1,61 @@
++/* SPDX-License-Identifier: BSD-3-Clause */
++#ifndef CVM_CHUNK_WIRE_H
++#define CVM_CHUNK_WIRE_H
++
++#include <stdbool.h>
++#include <stddef.h>
++#include <stdint.h>
++
++#define CVM_CHUNK_MAGIC UINT32_C(0x43564d43) /* "CVMC" */
++#define CVM_CHUNK_VERSION UINT16_C(1)
++#define CVM_CHUNK_HEADER_SIZE 72U
++#define CVM_CHUNK_TAG_SIZE 16U
++#define CVM_CHUNK_NONCE_SIZE 12U
++#define CVM_CHUNK_MAX_UDP_PAYLOAD 1472U
++#define CVM_CHUNK_DATA_SIZE \
++	(CVM_CHUNK_MAX_UDP_PAYLOAD - CVM_CHUNK_HEADER_SIZE - CVM_CHUNK_TAG_SIZE)
++#define CVM_CHUNK_ACK_BITMAP_SIZE 8U
++#define CVM_CHUNK_MAX_MESSAGE_SEQ UINT64_C(0x7fffffff)
++
++#define CVM_CHUNK_F_DATA UINT32_C(0x00000001)
++#define CVM_CHUNK_F_ACK  UINT32_C(0x00000002)
++
++struct cvm_chunk_header {
++	uint32_t flags;
++	uint32_t key_epoch;
++	uint64_t session_id;
++	uint64_t object_id;
++	uint64_t chunk_id;
++	uint64_t total_chunks;
++	uint64_t object_len;
++	uint64_t message_seq;
++	uint32_t payload_len;
++};
++
++void cvm_chunk_header_encode(uint8_t out[CVM_CHUNK_HEADER_SIZE],
++		const struct cvm_chunk_header *header);
++
++int cvm_chunk_header_decode(struct cvm_chunk_header *header,
++		const uint8_t *wire, size_t wire_len);
++
++int cvm_chunk_data_header_validate(const struct cvm_chunk_header *header,
++		uint64_t max_object_len);
++
++int cvm_chunk_ack_header_validate(const struct cvm_chunk_header *header,
++		uint64_t expected_session_id, uint64_t expected_object_id,
++		uint64_t expected_total_chunks, uint64_t expected_object_len,
++		uint32_t expected_key_epoch);
++
++int cvm_chunk_data_offset(const struct cvm_chunk_header *header,
++		uint64_t *offset);
++
++void cvm_chunk_nonce(uint8_t nonce[CVM_CHUNK_NONCE_SIZE],
++		const struct cvm_chunk_header *header);
++
++void cvm_chunk_ack_bitmap_encode(uint8_t out[CVM_CHUNK_ACK_BITMAP_SIZE],
++		uint64_t bitmap);
++
++uint64_t cvm_chunk_ack_bitmap_decode(
++		const uint8_t in[CVM_CHUNK_ACK_BITMAP_SIZE]);
++
++#endif /* CVM_CHUNK_WIRE_H */
+diff --git a/app/test-pmd/meson.build b/app/test-pmd/meson.build
+index adc6aef..f4aee95 100644
+--- a/app/test-pmd/meson.build
++++ b/app/test-pmd/meson.build
+@@ -31,6 +31,15 @@ sources = files(
+         'util.c',
+ )
+ 
++cvm_crypto_dep = dependency('libcrypto', required: false, method: 'pkg-config')
++if cvm_crypto_dep.found()
++    sources += files('cvm_chunk_crypto.c', 'cvm_chunk_fwd.c',
++            'cvm_chunk_packet.c', 'cvm_chunk_receiver.c',
++            'cvm_chunk_wire.c')
++    ext_deps += cvm_crypto_dep
++    cflags += '-DCVM_CHUNK_OPENSSL'
++endif
++
+ if dpdk_conf.has('RTE_HAS_JANSSON')
+     ext_deps += jansson_dep
+ endif
+diff --git a/app/test-pmd/testpmd.c b/app/test-pmd/testpmd.c
+index af8f2e0..7a42de1 100644
+--- a/app/test-pmd/testpmd.c
++++ b/app/test-pmd/testpmd.c
+@@ -202,6 +202,9 @@ struct fwd_engine * fwd_engines[] = {
+ 	&rx_only_engine,
+ 	&tx_only_engine,
+ 	&csum_fwd_engine,
++#ifdef CVM_CHUNK_OPENSSL
++	&cvm_chunk_engine,
++#endif
+ 	&icmp_echo_engine,
+ 	&noisy_vnf_engine,
+ 	&five_tuple_swap_fwd_engine,
+diff --git a/app/test-pmd/testpmd.h b/app/test-pmd/testpmd.h
+index 7cd3ab1..3c64a0a 100644
+--- a/app/test-pmd/testpmd.h
++++ b/app/test-pmd/testpmd.h
+@@ -474,6 +474,9 @@ extern struct fwd_engine flow_gen_engine;
+ extern struct fwd_engine rx_only_engine;
+ extern struct fwd_engine tx_only_engine;
+ extern struct fwd_engine csum_fwd_engine;
++#ifdef CVM_CHUNK_OPENSSL
++extern struct fwd_engine cvm_chunk_engine;
++#endif
+ extern struct fwd_engine icmp_echo_engine;
+ extern struct fwd_engine noisy_vnf_engine;
+ extern struct fwd_engine five_tuple_swap_fwd_engine;
+-- 
+2.53.0

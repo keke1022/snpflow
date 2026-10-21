@@ -1,0 +1,10 @@
+# Patch context lines intentionally contain whitespace-only diff prefixes.
+*.patch -whitespace
+
+# Keep source and documentation portable across checkouts.
+*.c text eol=lf
+*.h text eol=lf
+*.py text eol=lf
+*.sh text eol=lf
+*.md text eol=lf
+*.yml text eol=lf

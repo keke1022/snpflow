@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="370" viewBox="0 0 900 370">
+<rect width="900" height="370" fill="#fff"/>
+<rect x="40" y="30" width="820" height="44" fill="#eceef2"/>
+<line x1="40" y1="30" x2="860" y2="30" stroke="#222222" stroke-width="2"/>
+<text x="52" y="59" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="17" font-weight="bold" text-anchor="start" fill="#222222">Counter</text>
+<text x="620" y="59" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="17" font-weight="bold" text-anchor="end" fill="#222222">Host physical port</text>
+<text x="860" y="59" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="17" font-weight="bold" text-anchor="end" fill="#222222">CVM testpmd</text>
+<line x1="40" y1="74" x2="860" y2="74" stroke="#222222" stroke-width="1.5"/>
+<text x="52" y="100" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="17" font-weight="normal" text-anchor="start" fill="#222222">RX total</text>
+<text x="620" y="100" font-family="'Courier New', 'Liberation Mono', monospace" font-size="17" font-weight="normal" text-anchor="end" fill="#222222">65,650,022</text>
+<text x="860" y="100" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="17" font-weight="normal" text-anchor="end" fill="#595959">—</text>
+<rect x="40" y="112" width="820" height="38" fill="#f7f8fa"/>
+<text x="52" y="138" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="17" font-weight="normal" text-anchor="start" fill="#222222">Accepted by CVM RX</text>
+<text x="620" y="138" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="17" font-weight="normal" text-anchor="end" fill="#595959">—</text>
+<text x="860" y="138" font-family="'Courier New', 'Liberation Mono', monospace" font-size="17" font-weight="normal" text-anchor="end" fill="#222222">65,623,596</text>
+<text x="52" y="176" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="17" font-weight="normal" text-anchor="start" fill="#222222">RX missed (queue full)</text>
+<text x="620" y="176" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="17" font-weight="normal" text-anchor="end" fill="#595959">—</text>
+<text x="860" y="176" font-family="'Courier New', 'Liberation Mono', monospace" font-size="17" font-weight="normal" text-anchor="end" fill="#222222">26,426</text>
+<rect x="40" y="188" width="820" height="38" fill="#f7f8fa"/>
+<text x="52" y="214" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="17" font-weight="normal" text-anchor="start" fill="#222222">TX requested</text>
+<text x="620" y="214" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="17" font-weight="normal" text-anchor="end" fill="#595959">—</text>
+<text x="860" y="214" font-family="'Courier New', 'Liberation Mono', monospace" font-size="17" font-weight="normal" text-anchor="end" fill="#222222">65,623,596</text>
+<text x="52" y="252" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="17" font-weight="normal" text-anchor="start" fill="#222222">TX accepted</text>
+<text x="620" y="252" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="17" font-weight="normal" text-anchor="end" fill="#595959">—</text>
+<text x="860" y="252" font-family="'Courier New', 'Liberation Mono', monospace" font-size="17" font-weight="normal" text-anchor="end" fill="#222222">65,608,679</text>
+<rect x="40" y="264" width="820" height="38" fill="#f7f8fa"/>
+<text x="52" y="290" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="17" font-weight="normal" text-anchor="start" fill="#222222">TX dropped (burst full)</text>
+<text x="620" y="290" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="17" font-weight="normal" text-anchor="end" fill="#595959">—</text>
+<text x="860" y="290" font-family="'Courier New', 'Liberation Mono', monospace" font-size="17" font-weight="normal" text-anchor="end" fill="#222222">14,917</text>
+<text x="52" y="328" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="17" font-weight="normal" text-anchor="start" fill="#222222">Gb/s, 1514 B frame (testpmd)</text>
+<text x="620" y="328" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif" font-size="17" font-weight="normal" text-anchor="end" fill="#595959">—</text>
+<text x="860" y="328" font-family="'Courier New', 'Liberation Mono', monospace" font-size="17" font-weight="normal" text-anchor="end" fill="#222222">98.3–98.4</text>
+<line x1="40" y1="340" x2="860" y2="340" stroke="#222222" stroke-width="2"/>
+</svg>

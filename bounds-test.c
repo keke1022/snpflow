@@ -21,7 +21,29 @@
 #include <stdio.h>
 
 /* ================================================================
- * 被测逻辑 —— 与将要植入 mlx5_rx.h 的版本保持一致
+ * 被测逻辑
+ *
+ * 当前是本地副本。**接入 PMD 后必须改为 #include 生产头文件**，
+ * 否则实现会漂移 —— 审查第 5 条。届时还要加 meson 测试目标，
+ * 否则 CI 根本不会跑它。
+ *
+ * 另有两条接入前必须定好的事（审查第 2、3 条）：
+ *
+ * 1. cap 的语义只能二选一，不能混用：
+ *      (a) 固定为入口总预算，用 acc + raw <= cap
+ *      (b) 每段传递递减后的 remaining，只查 raw <= remaining
+ *    同时做会重复扣减。下面的用例用的是 (a)。
+ *
+ *    预算至少取三者最小值：
+ *      CQ 连续剩余项 / elts 连续剩余项 / 已投递且可消费的 mbuf 数
+ *
+ * 2. 长度校验**不是**一个谓词能覆盖的，有三套容量模型：
+ *      - SPRQ 单段 : len <= buf_len - data_off
+ *      - 标量 scatter: len 是整包长，可跨多个 mbuf，不能按单段判
+ *      - MPRQ      : byte_cnt 是打包字段（位0-15长度/位16-29 stride
+ *                    数/位31 filler），须拆开后分别校验，并检查
+ *                    stride_idx + stride_count <= strd_n
+ *    下面的 mlx5_rx_len_valid 只对应第一种。
  * ================================================================ */
 
 /**
@@ -61,6 +83,10 @@ mlx5_rx_mcqe_n_valid(uint32_t raw, uint16_t cap, uint16_t acc, uint16_t *n)
  *
  * 原先那版只检查 <= UINT16_MAX，形同虚设：mbuf 的可写空间通常
  * 只有 2KB 左右，而 UINT16_MAX 是 65535。
+ *
+ * 注意：本函数**只适用于 SPRQ 单段路径**。标量 scatter 的 len 是
+ * 整包长度、可跨多个 mbuf；MPRQ 的 byte_cnt 是打包字段。
+ * 那两种各需自己的校验，不能复用这个。
  *
  * @param len       CQE 声明的包长
  * @param buf_len   mbuf->buf_len

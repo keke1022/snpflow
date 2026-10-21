@@ -1,0 +1,8 @@
+0001-common-mlx5-glue-devx_umem_reg_ex.patch
+0002-common-mlx5-MR-dma-buf-DevX-mkey.patch
+0003-common-mlx5-net-mlx5-DMA-HWS-DevX.patch
+0004-HWS-DevX-CQ-testpmd-extbuf-PMD.patch
+0005-cvm-diagnostic-guards.patch
+0006-cvm-conservative-baseline.patch
+0007-testpmd-cvm-private-mbuf-bridge.patch
+0008-testpmd-cvm-authenticated-chunks.patch
