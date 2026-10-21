@@ -1,213 +1,78 @@
 # SNPFlow
 
-**Shared-memory DMA and authenticated object transfer for DPDK inside AMD SEV-SNP confidential VMs.**
+**Shared-memory DMA and authenticated object transfer for DPDK in AMD SEV-SNP VMs.**
 
-SNPFlow extends **DPDK 25.11.3's mlx5 driver and testpmd** with a shared-memory
-DMA path, a shared/private packet-buffer bridge, and an authenticated chunk
-transport. A companion Linux kernel module exports explicitly shared guest
-memory as dma-bufs. The implementation has been tested with an
-**NVIDIA ConnectX-7 PF passed through to a SEV-SNP guest on a 100 Gb/s link**.
+[![Portable checks](https://github.com/keke1022/snpflow/actions/workflows/ci.yml/badge.svg)](https://github.com/keke1022/snpflow/actions/workflows/ci.yml)
+[![DPDK integration](https://github.com/keke1022/snpflow/actions/workflows/dpdk.yml/badge.svg)](https://github.com/keke1022/snpflow/actions/workflows/dpdk.yml)
 
-This repository contains the kernel module, an ordered DPDK patch series,
-standalone probes, protocol tests, and dated validation reports. It is a
-research prototype; the measured capabilities and remaining limitations are
-listed below. Hardware results were recorded on September 21–30 and
-October 20, 2026.
+SNPFlow extends **DPDK 25.11.3's mlx5 driver and testpmd** so a passed-through
+NIC can use explicitly shared guest memory for DMA while packet processing
+and authenticated object reassembly stay in private guest memory.
+
+This is a research prototype, validated with an **NVIDIA ConnectX-7 on a
+100 Gb/s link inside an AMD SEV-SNP guest**.
 
 ## What we add to DPDK
 
-| Component | Our extension | Purpose |
-|---|---|---|
-| Linux `cvm_shared` module | Shared-page allocation, dma-buf export, VMA-based address lookup, and lifetime tracking | Give the NIC DMA-accessible memory without SWIOTLB bouncing |
-| mlx5 memory and DevX integration | DMA-specific allocation and dma-buf registration for packet buffers, CQ/SQ/RQ/QP memory, doorbells, and HWS resources | Make the mlx5 data path work inside the SNP guest |
-| Conservative mlx5 mode | Scalar SPRQ, private CQE snapshots, completion validation, exact TX completion tracking, and fail-stop handling | Validate and consume the same private completion record; reject unsupported device-written state |
-| testpmd private-mbuf bridge | Private forwarding/generator/GSO pools; shared RX snapshots and private-to-shared TX copies; strict pool ownership | Keep application processing and mbuf metadata in private guest memory |
-| testpmd `cvmchunk` mode | AES-256-GCM chunks, authenticated headers and ACKs, private reassembly bitmap, duplicate handling, and sender retransmission | Authenticate data before committing it to a private object |
+- **Shared DMA allocation:** a Linux `cvm_shared` module exports shared pages
+  as dma-bufs; mlx5 patches register packet buffers and device resources.
+- **Private packet processing:** validated private CQE snapshots and a testpmd
+  bridge keep application buffers and mbuf metadata in private memory.
+- **Authenticated object transfer:** `cvmchunk` adds AES-256-GCM chunks,
+  authenticated ACKs, retransmission and private object reassembly.
 
-The original probes found that ordinary private guest memory could not be
-registered for mlx5 DMA in the tested environment. System dma-heap mappings
-used SWIOTLB and failed at large contiguous mapping sizes. Our module and
-mlx5 changes provide a separate, explicitly shared DMA allocation path.
+Shared DMA memory remains untrusted. The bridge copies packets into private
+memory; `cvmchunk` authenticates data before committing it to an object.
 
-The authenticated receive path is:
+## Get started
 
-```text
-Host sender: object -> AES-256-GCM chunks -> Ethernet / IPv4 / UDP
-                                                |
-ConnectX-7 -> shared DMA mbuf -> private packet snapshot
-                                                |
-                            authenticate + decrypt -> private object
-                                                |
-                            authenticated ACK -> shared TX mbuf -> NIC
-```
-
-Shared DMA pages remain untrusted. Copying creates a private snapshot;
-authentication determines whether its contents may update the object. This
-path currently ends in CPU private memory. GPU transfer is a separate probe,
-not part of the complete authenticated transport.
-
-## Tested environment
-
-| Item | Recorded configuration |
-|---|---|
-| CPU / confidential VM | AMD EPYC 9354; AMD SEV-SNP, VMPL0 |
-| NIC | NVIDIA ConnectX-7, PF1 passthrough; mlx5; guest BDF `0000:04:00.0` |
-| Link / packet format | 100 Gb/s; IPv4/UDP; 1,500-byte IP packets, 1,472-byte UDP payloads |
-| Guest kernel | September: `7.0.0-31-generic`; October regression: `7.0.0-34-generic` |
-| NIC firmware | October regression: `28.44.1036` (`MT_0000000834`) |
-| DPDK / RDMA userspace | DPDK `25.11.3`; rdma-core `61.0` |
-| mlx5 / EAL configuration | DevX + HWS (`dv_flow_en=2`), `--iova-mode=va`, `--mp-alloc=xbuf` |
-| Guest DMA translation | No translating guest IOMMU; the module rejects non-identity domains |
-| Bulk traffic tests | Four RX/TX queues and four forwarding lcores; 16 host UDP/GSO flows |
-| Authenticated object tests | One RX/TX queue and one forwarding lcore; OpenSSL `3.5.5` |
-| Optional GPU probe | NVIDIA H200 NVL; driver `595.91.07`; CC mode ON |
-
-These results establish behavior on this configuration. Other NIC models,
-firmware revisions, guest kernels, and DPDK releases have not been qualified.
-The NIC firmware version was not captured in the September reports.
-
-## Test cases and results
-
-### Functional correctness
-
-| Test case | Acceptance criterion | Recorded result |
-|---|---|---|
-| Shared-memory mechanism (`verify-probe`) | Bidirectional CPU mapping, zero SWIOTLB growth, IOMMU guard, fd/mmap lifetime, LOOKUP lifetime, SG tail bounds | All six checks passed |
-| NIC DMA and macswap | Hardware completion matches the submitted operation; returned packet differs only in swapped MAC addresses | Byte-level round trip passed |
-| Resource lifecycle | Repeated port stop/start without fd growth; oversized shared allocation fails closed | Ten restart cycles passed; allocation above 1 GiB rejected |
-| Private-mbuf bridge, four queues | RX copy and RX/private-processing/TX copy complete without errors or drops | RX-only: 729,448 packets; macswap: 91,184 RX and TX packets; zero misses/errors/drops |
-| Expanded bridge coverage (October) | Generators, split packets and GSO use private application pools | 11 engine modes exercised on virtual/physical ports; 512/512 segmented TX packets received; GSO: 1,024 RX → 3,072 TX, zero drops |
-| CQE mutation regressions (October) | Changing shared fields after validation cannot change consumed length/counter | 23 actual-PMD cases passed; both pre-fix mutation controls failed as expected |
-| Authenticated protocol | Reject tampered headers/payloads before allocation or commit; accept out-of-order chunks; deduplicate authentic replays | Host and CVM protocol tests passed; host ASan/UBSan and static analysis passed |
-| Protocol fault injection | Recover from a missing or corrupted chunk; preserve final object hash after replay | All three 1 MiB end-to-end cases passed |
-| 512 MiB synthetic KV object | Reassemble 387,913 chunks in private memory and match sender SHA-256 | Exact hash match; zero retransmissions, duplicates, NIC misses, or NIC errors |
-
-Evidence: [kernel and baseline checks](kmod/ISSUES.md),
-[bridge validation](docs/VALIDATION-2026-09-27-sync-mbuf-bridge.md),
-[protocol and fault injection](docs/VALIDATION-2026-09-29-authenticated-chunks.md),
-[512 MiB transfer](docs/VALIDATION-2026-09-29-kv-cache-transfer.md).
-The [October correctness and coverage report](docs/VALIDATION-2026-10-20-feature-coverage.md)
-records the new source revisions, software tests, physical-port matrix, and
-remaining unsupported configurations.
-
-### Performance by data path
-
-The rows below measure different stages. Raw receive throughput is not the
-throughput of authenticated object transfer.
-
-| Data path | Workload | Observed result | Interpretation |
-|---|---|---|---|
-| Shared-buffer RX, before the private bridge | 40 GiB synthetic KV stream, four queues | 3.629 s; **94.680 Gbit/s UDP payload**; zero RX misses/errors/nombuf | Packet/byte accounting only; no bytewise reassembly or authentication |
-| Shared-buffer macswap, before the private bridge | Approximately 10 s of offered traffic | Stable intervals: **98.3–98.4 Gbit/s** at 1,514-byte accounting, approximately 100 Gb/s wire occupancy | 41,343 packets lost over the complete run; not a sustained zero-loss result |
-| Private bridge, RX-only | 40 GiB offered load, one copy per packet | **97.742 Gbit/s estimated L2 receive rate**; 0.1530% RX miss | No AEAD or object reassembly |
-| Private bridge, macswap | 40 GiB offered load, two copies per packet | **88.955 Gbit/s estimated L2 rate**; 4.9140% RX miss | All accepted RX packets transmitted; no TX errors/drops |
-| Authenticated private-object transfer | 512 MiB, single queue/core, per-packet AES-GCM and ACK | 3.305 s; **1.300 Gbit/s object payload**; exact SHA-256; zero retransmissions | Correctness prototype, not a tuned transport |
-
-See the [baseline measurements](docs/VALIDATION-2026-09-24.md),
-[bridge performance report](docs/PERFORMANCE-2026-09-27-sync-mbuf-bridge.md), and
-[authenticated KV result](docs/VALIDATION-2026-09-29-kv-cache-transfer.md).
-Guest vCPUs were not pinned to dedicated host CPUs, and their affinity
-overlapped the senders. A repeatable, long-duration zero-loss capacity result
-remains open.
-
-The October 20 regression repeated the authenticated 512 MiB transfer after
-the CQE fixes: **3.596 s, 1.194 Gbit/s**, exact SHA-256, and zero
-retransmissions or NIC errors/misses. This was a functional rerun with an
-updated guest kernel and no dedicated CPU pinning, not a controlled
-performance comparison.
-
-The 40 GiB workload models BF16 K+V for 80 layers, 131,072 tokens, eight KV
-heads, and head dimension 128. The 512 MiB object models one such layer.
-Both contain deterministic synthetic bytes, not tensors serialized by a
-serving framework.
-
-### GPU feasibility probes
-
-A 512 MiB dma-buf attached to both H200 and ConnectX with identical SG layouts
-for 100 attach/map/unmap/detach cycles. This checks Linux DMA attachment;
-it does not demonstrate GPU execution or simultaneous device DMA.
-
-On September 30, after GPU attestation and ReadyState setup,
-`cuMemHostRegister` and `cuImportExternalMemory(DMABUF_FD)` returned
-`CUDA_ERROR_NOT_SUPPORTED` in the tested H200 CC configuration. A
-`cuMemcpyHtoD` copy from the shared mapping succeeded, and GPU code read the
-expected 64 bytes from protected HBM. Full KV placement in HBM and framework
-integration are not implemented. See the [GPU probe report](scratch/cuda-import-probe/README.md).
-
-## Build and reproduce
-
-Hardware-independent checks require a C compiler, Make, pkg-config, OpenSSL
-development files, Python 3, and Python `cryptography`. On Debian/Ubuntu:
+Run the portable checks on Debian/Ubuntu with Git 2.43 or newer:
 
 ```sh
+git clone https://github.com/keke1022/snpflow.git
+cd snpflow
 sudo apt-get install build-essential pkg-config libssl-dev python3 python3-cryptography
 make test
 make check
 ```
 
-Contributors can enable local commit/push checks with `make install-hooks`.
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow and
-[SECURITY.md](SECURITY.md) for private vulnerability reporting.
+These checks need no DPDK installation, NIC or SNP guest. To build the full
+path, follow the [DPDK patch guide](patches/README.md) and
+[hardware setup and reproduction guide](docs/REPRODUCING.md).
 
-`make test` runs the standalone boundary model, C authenticated-protocol tests,
-and Python channel model. These do not require root, DPDK, a NIC, or a GPU.
-They do not substitute for the tests compiled against the actual mlx5 headers
-or the recorded hardware runs.
-`make test-dpdk DPDK_BUILD=/path/to/dpdk/build` runs the 48 new production-code
-regressions, including all 11 applicable forwarding engines when OpenSSL is
-enabled. See the [DPDK test guide](tests/dpdk/README.md). A separate GitHub
-Actions workflow builds the verified official release and runs these tests
-with and without ASan/UBSan.
+## Validation
 
-The [upstream test audit](docs/VALIDATION-2026-10-21-upstream-tests.md) separately
-records DPDK's original test results and remaining failures. Passing the
-SNPFlow integration CI does not mean the entire upstream suite passes.
+Hardware tests used AMD EPYC 9354, a SEV-SNP guest at VMPL0, and a
+passed-through ConnectX-7 PF. Exact kernels, firmware and runtime settings
+are in the [tested configuration](docs/REPRODUCING.md#recorded-hardware-configuration).
 
-For the complete data path, follow:
+| Test | Recorded result |
+|---|---|
+| Shared memory and NIC DMA | Six module checks and a byte-level macswap round trip passed |
+| [Production-code regressions](tests/dpdk/README.md) | 48 checks covering CQE mutation, buffer ownership and forwarding passed |
+| [Selected upstream tests](docs/VALIDATION-2026-10-21-test-setup.md) | 22 DPDK commands pass in CI; the full upstream suite still has failures and skips |
+| [Raw receive, before the private bridge](docs/VALIDATION-2026-09-24.md) | 40 GiB synthetic stream: **94.680 Gbit/s UDP payload**, no authentication |
+| [Authenticated private-object transfer](docs/VALIDATION-2026-10-20-feature-coverage.md) | 512 MiB synthetic object: **3.596 s / 1.194 Gbit/s**, exact SHA-256, zero retransmissions; one queue/core |
 
-1. [DPDK patch series and exact baselines](patches/README.md).
-2. [Build, hardware setup, and test commands](docs/REPRODUCING.md).
-3. [Validation reports and experiment index](docs/README.md).
+These measurements cover different data paths and are not a controlled
+performance comparison. See the [validation index](docs/README.md) for
+workloads, loss counters, negative controls and unresolved issues.
 
-## Repository layout
+## Scope
 
-```text
-kmod/                 cvm_shared kernel module and UAPI
-patches/              ordered DPDK 25.11.3 patch series and provenance
-scratch/              runnable protocol prototypes, benchmarks, and probes
-docs/                 dated validation reports, reproduction guide, figures
-dpdk-patches/          historical implementation notes and archived generators
-prm/                  headers used by the standalone DevX probe
-*-probe.c             standalone memory-registration and DMA probes
-bounds-test.c         historical boundary-logic model (not production PMD code)
-```
+The CVM path currently supports scalar SPRQ and testpmd's private-buffer
+bridge. Production key management and replay protection across restarts are
+unfinished. GPU experiments are separate; authenticated delivery into GPU
+memory is not implemented. See [configuration limits](docs/REPRODUCING.md#configuration-limits).
 
-## Current scope
+## Help and contributions
 
-- The supported receive configuration is scalar SPRQ. CVM mode disables CQE
-  compression, vector RX, and MPRQ, and rejects scatter, LRO, and shared RX queues.
-- Forged CQE behavior is covered by isolated logic tests, not malicious
-  completion injection into a live mlx5 CQ. New tests additionally execute
-  actual PMD functions with synthetic rings and deterministic shared-field
-  mutation at the validation boundary.
-- The private bridge is integrated into testpmd, including packet generators,
-  splitting and GSO. Ordinary DPDK applications do not acquire it automatically.
-  CVM mode rejects `ieee1588`, `recycle_mbufs`, and `shared_rxq`; those modes
-  need separate handling for device metadata, recycling, or shared queues.
-- `cvmchunk` supports one object per receiver start, one queue/core, fixed
-  endpoints, and unfragmented IPv4/UDP. It has no congestion control or RTT
-  estimator; the test sender uses a one-second retransmission timeout.
-- Production key provisioning/rotation, persistent nonce allocation, and
-  replay protection across receiver restarts remain unimplemented. Published
-  test keys are fixtures, not deployment credentials.
-- Kernel memory accounting, NUMA allocation policy, and broader lifecycle
-  stress coverage remain open; see [module issues](kmod/ISSUES.md).
+Open an [issue](https://github.com/keke1022/snpflow/issues) for questions or
+bugs. See [CONTRIBUTING.md](CONTRIBUTING.md) for development and local Git hooks,
+and [SECURITY.md](SECURITY.md) for private vulnerability reports.
 
-## Contributing and licensing
+## License
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for validation and patch maintenance.
-Original project material is available under the [MIT License](LICENSE),
-except for the components listed in [LICENSING.md](LICENSING.md). The kernel
-module and DMA attachment probe retain GPL-2.0; DPDK patches and the chunk
-protocol implementation retain BSD-3-Clause. This is a mixed-license source
-repository, not an MIT-only distribution of DPDK or Linux kernel code.
+Original project material uses [MIT](LICENSE). DPDK patches and protocol code
+retain BSD-3-Clause; kernel components retain GPL-2.0.
+See [LICENSING.md](LICENSING.md) for component boundaries.

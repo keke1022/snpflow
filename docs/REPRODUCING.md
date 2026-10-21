@@ -1,9 +1,46 @@
 # Build and reproduce
 
 Commands below are run from the repository root unless a `cd` is shown.
-Portable checks run on an ordinary Linux host. Hardware tests need the
-SEV-SNP/ConnectX setup described in the [README](../README.md); they are not
-part of hosted CI.
+Portable checks run on an ordinary Linux host. Hardware tests use the
+SEV-SNP/ConnectX setup below and are separate from hosted CI.
+
+## Recorded hardware configuration
+
+These are the configurations used for the September and October 2026 reports.
+Other NICs, firmware revisions, kernels and DPDK releases are not qualified.
+
+| Item | Recorded configuration |
+|---|---|
+| CPU / confidential VM | AMD EPYC 9354; AMD SEV-SNP, VMPL0 |
+| NIC | NVIDIA ConnectX-7, PF1 passthrough; mlx5; guest BDF `0000:04:00.0` |
+| Link / packet format | 100 Gb/s; IPv4/UDP; 1,500-byte IP packets, 1,472-byte UDP payloads |
+| Guest kernel | September: `7.0.0-31-generic`; October regression: `7.0.0-34-generic` |
+| NIC firmware | October: `28.44.1036` (`MT_0000000834`); not captured in September |
+| DPDK / RDMA userspace | DPDK `25.11.3`; rdma-core `61.0` |
+| mlx5 / EAL | DevX + HWS (`dv_flow_en=2`), `--iova-mode=va`, `--mp-alloc=xbuf` |
+| Guest DMA translation | No translating guest IOMMU; non-identity domains are rejected |
+| Bulk traffic | Four RX/TX queues and four forwarding lcores; 16 host UDP/GSO flows |
+| Authenticated objects | One RX/TX queue and one forwarding lcore; OpenSSL `3.5.5` |
+| Optional GPU probe | NVIDIA H200 NVL; driver `595.91.07`; CC mode ON |
+
+## Configuration limits
+
+- CVM receive uses scalar SPRQ. CQE compression, vector RX and MPRQ are
+  disabled; scatter, LRO and shared RX queues are rejected.
+- The private-buffer bridge is integrated into testpmd. Other DPDK
+  applications need their own integration. `ieee1588`, `recycle_mbufs` and
+  `shared_rxq` require semantics the CVM bridge does not currently support.
+- `cvmchunk` supports one object per receiver start, one queue/core, fixed
+  endpoints and unfragmented IPv4/UDP. It has no congestion control or RTT
+  estimator; the sender uses a one-second retransmission timeout.
+- Production key provisioning/rotation, persistent nonce allocation and
+  replay protection across receiver restarts are unfinished. Published keys
+  are test fixtures. The authenticated path ends in private CPU memory;
+  [GPU experiments](../scratch/cuda-import-probe/README.md) are separate.
+- CQE mutation tests exercise actual PMD code with synthetic rings; they do
+  not inject malicious completions into a live NIC queue. Kernel memory
+  accounting, NUMA policy and broader lifecycle stress coverage remain open;
+  see [module issues](../kmod/ISSUES.md).
 
 ## 1. Portable tests
 
