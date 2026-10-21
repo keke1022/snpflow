@@ -24,6 +24,38 @@ This is a research prototype, validated with an **NVIDIA ConnectX-7 on a
 Shared DMA memory remains untrusted. The bridge copies packets into private
 memory; `cvmchunk` authenticates data before committing it to an object.
 
+```mermaid
+flowchart LR
+    NIC["ConnectX-7 NIC"]
+    subgraph VM["SEV-SNP guest · current CVM path"]
+        direction LR
+        ALLOC["cvm_shared + mlx5 registration"]
+        subgraph SHARED["Shared memory · untrusted"]
+            DMA["RX / TX packet buffers"]
+            QUEUES["Work / completion queues<br/>Doorbell records"]
+        end
+        subgraph PRIVATE["Private memory · CPU only"]
+            PMD["mlx5 PMD<br/>CQE snapshot + validation"]
+            APP["testpmd bridge + forwarding<br/>Private packets and mbuf metadata"]
+            AUTH["cvmchunk mode<br/>AES-256-GCM verification"]
+            OBJECT["Private object reassembly"]
+        end
+        ALLOC -.->|dma-buf backing| DMA
+        ALLOC -.->|dma-buf backing| QUEUES
+        QUEUES -->|snapshot CQE| PMD
+        DMA -->|RX copy via bridge| APP
+        PMD -->|validated RX completion| APP
+        APP -->|TX copy via bridge| DMA
+        APP --> AUTH
+        AUTH -->|authenticated chunks only| OBJECT
+    end
+    NIC <-->|packet DMA| DMA
+    NIC <-->|queue DMA| QUEUES
+```
+
+Simplified data path; queue posting and NIC MMIO are omitted. Private copies
+isolate processing from shared memory, but only `cvmchunk` authenticates payloads.
+
 ## Get started
 
 Run the portable checks on Debian/Ubuntu with Git 2.43 or newer:
