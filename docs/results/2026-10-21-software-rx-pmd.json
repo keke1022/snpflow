@@ -1,0 +1,282 @@
+{
+  "baseline_repository_revision": "494dcd5573e14876e475374dea808ecb74811709",
+  "dpdk_source_tree": "92d30365612504a53394ac6d3de15c854c7b8d09",
+  "dpdk_patch_series_changed": false,
+  "build_options": {
+    "default_library": "static",
+    "enable_apps": "test,test-pmd",
+    "enable_drivers": "bus/*,common/mlx5,net/mlx5,net/null,net/ring,net/pcap,mempool/ring,event/sw,event/skeleton,dma/skeleton,raw/skeleton,crypto/null,crypto/openssl,compress/zlib,net/bonding",
+    "platform": "generic",
+    "tests": true
+  },
+  "binary_sha256": {
+    "patched": "ead357be35f52409af4782b216cdc9259a191b071cf4c194234131b24e691714",
+    "pristine": "3e622782d92e49ff595fdd798d767e941483c9f62f8c3cca9d6e01c94e537f42"
+  },
+  "controls": {
+    "rx-2048": [
+      {
+        "name": "event_eth_rx_adapter_autotest",
+        "result": "FAIL",
+        "returncode": 255,
+        "duration": 2.071,
+        "timeout": 180,
+        "command": [
+          "/tmp/snpflow-native-software-build/app/dpdk-test",
+          "-l",
+          "0-1",
+          "--no-pci",
+          "-a",
+          "0000:00:00.0",
+          "--no-huge",
+          "-m",
+          "2048",
+          "--file-prefix=event_eth_rx_adapter_autotest",
+          "--no-shconf",
+          "--no-telemetry"
+        ]
+      }
+    ],
+    "rx-4096": [
+      {
+        "name": "event_eth_rx_adapter_autotest",
+        "result": "PASS",
+        "returncode": 0,
+        "duration": 2.172,
+        "timeout": 180,
+        "command": [
+          "/tmp/snpflow-native-software-build/app/dpdk-test",
+          "-l",
+          "0-1",
+          "--no-pci",
+          "-a",
+          "0000:00:00.0",
+          "--no-huge",
+          "-m",
+          "4096",
+          "--file-prefix=event_eth_rx_adapter_autotest",
+          "--no-shconf",
+          "--no-telemetry"
+        ]
+      }
+    ],
+    "rx-4096-pristine": [
+      {
+        "name": "event_eth_rx_adapter_autotest",
+        "result": "PASS",
+        "returncode": 0,
+        "duration": 2.271,
+        "timeout": 180,
+        "command": [
+          "/tmp/snpflow-native-software-pristine-build/app/dpdk-test",
+          "-l",
+          "0-1",
+          "--no-pci",
+          "-a",
+          "0000:00:00.0",
+          "--no-huge",
+          "-m",
+          "4096",
+          "--file-prefix=event_eth_rx_adapter_autotest",
+          "--no-shconf",
+          "--no-telemetry"
+        ]
+      }
+    ],
+    "pmd-no-port": [
+      {
+        "name": "pmd_perf_autotest",
+        "result": "FAIL",
+        "returncode": 255,
+        "duration": 0.165,
+        "timeout": 120,
+        "command": [
+          "/tmp/snpflow-native-software-build/app/dpdk-test",
+          "-l",
+          "0-1",
+          "--no-pci",
+          "-a",
+          "0000:00:00.0",
+          "--no-huge",
+          "-m",
+          "512",
+          "--file-prefix=pmd_perf_autotest",
+          "--no-shconf",
+          "--no-telemetry"
+        ]
+      }
+    ],
+    "pmd-ring": [
+      {
+        "name": "pmd_perf_autotest",
+        "result": "PASS",
+        "returncode": 0,
+        "duration": 0.315,
+        "timeout": 120,
+        "command": [
+          "/tmp/snpflow-native-software-build/app/dpdk-test",
+          "-l",
+          "0-1",
+          "--no-pci",
+          "-a",
+          "0000:00:00.0",
+          "--no-huge",
+          "-m",
+          "512",
+          "--file-prefix=pmd_perf_autotest",
+          "--vdev=net_ring0",
+          "--no-shconf",
+          "--no-telemetry"
+        ]
+      }
+    ],
+    "pmd-ring-pristine": [
+      {
+        "name": "pmd_perf_autotest",
+        "result": "PASS",
+        "returncode": 0,
+        "duration": 0.315,
+        "timeout": 120,
+        "command": [
+          "/tmp/snpflow-native-software-pristine-build/app/dpdk-test",
+          "-l",
+          "0-1",
+          "--no-pci",
+          "-a",
+          "0000:00:00.0",
+          "--no-huge",
+          "-m",
+          "512",
+          "--file-prefix=pmd_perf_autotest",
+          "--vdev=net_ring0",
+          "--no-shconf",
+          "--no-telemetry"
+        ]
+      }
+    ]
+  },
+  "functional_runner": {
+    "invocation": [
+      "bash",
+      "scripts/test-dpdk-upstream.sh",
+      "/tmp/snpflow-native-software-build",
+      "--software"
+    ],
+    "script_sha256": "d15177251152ef39921febc09634673c7fe5d167fe51b6975c918efea390723e",
+    "exit_status": 0,
+    "cpu_list": "0,1",
+    "ordinary_memory_mib": {
+      "default": 2048,
+      "event_eth_rx_adapter_autotest": 4096
+    },
+    "results": [
+      {
+        "name": "efd_autotest",
+        "exit_status": 0
+      },
+      {
+        "name": "efd_perf_autotest",
+        "exit_status": 0
+      },
+      {
+        "name": "security_autotest",
+        "exit_status": 0
+      },
+      {
+        "name": "ipsec_autotest",
+        "exit_status": 0
+      },
+      {
+        "name": "cryptodev_null_autotest",
+        "exit_status": 0
+      },
+      {
+        "name": "eventdev_common_autotest",
+        "exit_status": 0
+      },
+      {
+        "name": "eventdev_selftest_sw",
+        "exit_status": 0
+      },
+      {
+        "name": "event_crypto_adapter_autotest",
+        "exit_status": 0
+      },
+      {
+        "name": "event_dma_adapter_autotest",
+        "exit_status": 0
+      },
+      {
+        "name": "event_eth_tx_adapter_autotest",
+        "exit_status": 0
+      },
+      {
+        "name": "event_eth_rx_adapter_autotest",
+        "exit_status": 0
+      },
+      {
+        "name": "pmd_perf_autotest",
+        "exit_status": 0
+      }
+    ]
+  },
+  "registration": {
+    "bpf_meson_tests": [
+      "bpf_no_instructions_autotest",
+      "bpf_exit_only_autotest",
+      "bpf_no_exit_autotest",
+      "bpf_minimal_working_autotest",
+      "bpf_add_one_autotest",
+      "bpf_subtract_one_autotest",
+      "bpf_jump_over_invalid_first_autotest",
+      "bpf_jump_over_invalid_non_first_autotest",
+      "bpf_stack_alignment_autotest",
+      "bpf_stack_copy_uint128_autotest",
+      "bpf_stack_sse2_autotest",
+      "bpf_stack_memcpy_autotest"
+    ],
+    "bpf_outcomes": {
+      "bpf_no_instructions_autotest": "OK",
+      "bpf_exit_only_autotest": "OK",
+      "bpf_no_exit_autotest": "OK",
+      "bpf_minimal_working_autotest": "OK",
+      "bpf_add_one_autotest": "OK",
+      "bpf_subtract_one_autotest": "OK",
+      "bpf_jump_over_invalid_first_autotest": "OK",
+      "bpf_jump_over_invalid_non_first_autotest": "OK",
+      "bpf_stack_alignment_autotest": "OK",
+      "bpf_stack_copy_uint128_autotest": "OK",
+      "bpf_stack_sse2_autotest": "OK",
+      "bpf_stack_memcpy_autotest": "OK"
+    },
+    "scheduler_command": [
+      "/tmp/snpflow-native-software-build/app/dpdk-test",
+      "-l",
+      "0",
+      "--no-huge",
+      "-m",
+      "256",
+      "--no-pci",
+      "--no-shconf",
+      "--no-telemetry"
+    ],
+    "scheduler_test": "cryptodev_scheduler_autotest",
+    "scheduler_exit_status": 77,
+    "expected_scheduler_exit_status": 77,
+    "scope": "Missing-driver reporting; scheduler functionality is not exercised"
+  },
+  "rx_adapter_subcases": {
+    "passed": 13,
+    "failed": 0,
+    "skipped": 0
+  },
+  "pmd_loopback": {
+    "received_packets": 29761920,
+    "measured_drops": 0,
+    "idle_polls": 0,
+    "injected_packets": 1023,
+    "requested_injection": 2048,
+    "scope": "Software ring loopback only; not physical NIC performance or private-bridge coverage"
+  },
+  "scope": "Targeted configuration fixes and reruns, not a new full-suite audit. RX interrupts, full mempool benchmarks and the intermittent timer failure remain unresolved."
+}

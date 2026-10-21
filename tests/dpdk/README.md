@@ -23,7 +23,8 @@ command, no NIC or hugepages, and 2 GiB of memory. It records logs and exit
 statuses under the build's `snpflow-upstream-tests/` directory and fails on
 skips as well as errors. This targeted group does not replace the full audit.
 
-For the CI software-device profile, also enable `event/sw,event/skeleton,dma/skeleton`
+For the CI software-device profile, also enable
+`event/sw,event/skeleton,dma/skeleton,net/null,net/ring`
 and run:
 
 ```sh
@@ -31,15 +32,21 @@ bash scripts/test-dpdk-upstream.sh /path/to/dpdk/build --software
 python3 scripts/test-dpdk-registration.py /path/to/dpdk/build
 ```
 
-The software profile uses two available CPUs and runs ten commands, including
-NULL crypto, eventdev common/self-tests, and event crypto/DMA/TX adapters.
-It supplies the required NULL crypto and skeleton DMA device instances.
+The software profile uses two available CPUs on the same NUMA node (0 or 1,
+as required by the upstream PMD test) and runs twelve commands, including
+NULL crypto, eventdev common/self-tests, event crypto/DMA/TX/RX adapters, and
+PMD software loopback. It supplies the required NULL crypto, skeleton DMA,
+and ring Ethernet device instances. The RX adapter command uses 4 GiB of EAL
+memory; the other commands use 2 GiB and run sequentially. Allow additional
+RAM for the OS and the test process. The ring PMD result is a software-path
+check, not a hardware throughput measurement.
 The registration check runs twelve BPF cases through Meson and checks that
 a build with `crypto/scheduler` disabled reports that command as skipped
 (77), not unknown. This availability check is not a scheduler functional pass.
 Logs remain under `meson-logs/` and `snpflow-upstream-tests/` in the build.
 
 See the [test setup validation](../../docs/VALIDATION-2026-10-21-test-setup.md)
+and [RX/PMD follow-up](../../docs/VALIDATION-2026-10-21-software-rx-pmd.md)
 for before/after evidence and limits. RX interrupts, hugepage subprocess tests,
 long mempool benchmarks and timing-sensitive timer tests are outside this
 small CI profile.
