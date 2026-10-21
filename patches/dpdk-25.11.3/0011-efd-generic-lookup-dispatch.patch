@@ -1,0 +1,25 @@
+From e3f9f829c85964f404d88ebb3623befd3199348e Mon Sep 17 00:00:00 2001
+From: keke1022 <keke83space@gmail.com>
+Date: Wed, 21 Oct 2026 01:59:50 -0700
+Subject: [PATCH] efd: select AVX2 lookup only when compiled
+
+---
+ lib/efd/rte_efd.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/lib/efd/rte_efd.c b/lib/efd/rte_efd.c
+index ebf1e06..7eb943d 100644
+--- a/lib/efd/rte_efd.c
++++ b/lib/efd/rte_efd.c
+@@ -647,7 +647,7 @@ rte_efd_create(const char *name, uint32_t max_num_rules, uint32_t key_len,
+ 		}
+ 	}
+ 
+-#if defined(RTE_ARCH_X86)
++#if defined(RTE_ARCH_X86) && defined(__AVX2__)
+ 	/*
+ 	 * For less than 4 bits, scalar function performs better
+ 	 * than vectorised version
+-- 
+2.51.0
+

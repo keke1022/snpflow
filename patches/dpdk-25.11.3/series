@@ -8,3 +8,4 @@
 0008-testpmd-cvm-authenticated-chunks.patch
 0009-mlx5-cvm-private-cqe-snapshots.patch
 0010-testpmd-cvm-private-forwarding-pools.patch
+0011-efd-generic-lookup-dispatch.patch

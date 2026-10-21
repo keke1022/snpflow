@@ -4,6 +4,10 @@ This audit runs DPDK 25.11.3's own tests, separately from SNPFlow's 48
 production-code regressions and two added mlx5 validation commands. The
 previous green CI results did not establish that the upstream suite passed.
 
+This is the historical audit of patches 0001–0010. Subsequent findings and
+corrections are recorded in the [failure follow-up](VALIDATION-2026-10-21-upstream-fixes.md);
+the original results below are preserved.
+
 **The upstream tests are not all passing.** The original host build ran 246
 upstream entries, with **161 passed, 25 failed, and 60 skipped**:
 

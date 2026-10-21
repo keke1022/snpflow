@@ -1,0 +1,94 @@
+{
+  "date": "2026-10-21",
+  "baseline_repository_revision": "ae3d39ba29f2",
+  "efd_patch": "0011-efd-generic-lookup-dispatch.patch",
+  "efd_before": [
+    {
+      "name": "efd_autotest",
+      "suite": "perf-tests",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration_seconds": 0.274,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json",
+      "pristine_result": "FAIL",
+      "classification": "generic build selects uncompiled AVX2 EFD implementation; reproduced upstream"
+    },
+    {
+      "name": "efd_perf_autotest",
+      "suite": "perf-tests",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration_seconds": 0.819,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "--no-huge",
+        "-m",
+        "2048"
+      ],
+      "log": "native-perf-stress-20261021.json",
+      "pristine_result": "FAIL",
+      "classification": "generic build selects uncompiled AVX2 EFD implementation; reproduced upstream"
+    }
+  ],
+  "efd_after": [
+    {
+      "name": "efd_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 20.873,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=efd_autotest"
+      ]
+    },
+    {
+      "name": "efd_perf_autotest",
+      "result": "PASS",
+      "returncode": 0,
+      "duration": 9.241,
+      "timeout": 600,
+      "command": [
+        "/tmp/snpflow-dpdk-build/app/dpdk-test",
+        "-l",
+        "0-7",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=efd_perf_autotest"
+      ]
+    }
+  ],
+  "binary_sha256": {
+    "before": "ccfd1a804ae810b4ec0b0991ccb6992a57dc43bdf28395ea5451d410ddf59504",
+    "efd_after": "c8c4eaba67a57b940d2f07108544f6da1b910884ab7131c66f56f491e14209b0"
+  },
+  "limits": [
+    "Targeted reruns only; original full-suite counts are not recalculated",
+    "No xbuf/private bridge/NIC DMA in these native commands",
+    "Shared host; durations are not controlled performance measurements"
+  ]
+}
