@@ -10,3 +10,4 @@
 0010-testpmd-cvm-private-forwarding-pools.patch
 0011-efd-generic-lookup-dispatch.patch
 0012-security-session-size-validation.patch
+0013-test-registration-metadata.patch

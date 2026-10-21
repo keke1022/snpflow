@@ -18,6 +18,7 @@ supersede their open questions.
 | [2026-10-20 correctness and coverage](VALIDATION-2026-10-20-feature-coverage.md) | CQE mutation fixes, 48 production-code tests, forwarding/GSO hardware matrix, authenticated reruns, official-release baseline |
 | [2026-10-21 upstream test audit](VALIDATION-2026-10-21-upstream-tests.md) | DPDK's original tests, pristine-release failure comparisons, SNP hugepage reruns, and build/driver limitations |
 | [2026-10-21 upstream failure fixes](VALIDATION-2026-10-21-upstream-fixes.md) | Root causes, corrective patches, and targeted before/after validation |
+| [2026-10-21 test setup fixes](VALIDATION-2026-10-21-test-setup.md) | BPF discovery, scheduler availability reporting, and reproducible software-device CI coverage |
 | [Kernel issues and history](../kmod/ISSUES.md) | Allocation and lifetime behavior, design constraints, known gaps |
 
 ## Runnable experiments

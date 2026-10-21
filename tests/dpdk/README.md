@@ -23,6 +23,27 @@ command, no NIC or hugepages, and 2 GiB of memory. It records logs and exit
 statuses under the build's `snpflow-upstream-tests/` directory and fails on
 skips as well as errors. This targeted group does not replace the full audit.
 
+For the CI software-device profile, also enable `event/sw,event/skeleton,dma/skeleton`
+and run:
+
+```sh
+bash scripts/test-dpdk-upstream.sh /path/to/dpdk/build --software
+python3 scripts/test-dpdk-registration.py /path/to/dpdk/build
+```
+
+The software profile uses two available CPUs and runs ten commands, including
+NULL crypto, eventdev common/self-tests, and event crypto/DMA/TX adapters.
+It supplies the required NULL crypto and skeleton DMA device instances.
+The registration check runs twelve BPF cases through Meson and checks that
+a build with `crypto/scheduler` disabled reports that command as skipped
+(77), not unknown. This availability check is not a scheduler functional pass.
+Logs remain under `meson-logs/` and `snpflow-upstream-tests/` in the build.
+
+See the [test setup validation](../../docs/VALIDATION-2026-10-21-test-setup.md)
+for before/after evidence and limits. RX interrupts, hugepage subprocess tests,
+long mempool benchmarks and timing-sensitive timer tests are outside this
+small CI profile.
+
 Apply the [complete patch series](../../patches/README.md), then build:
 
 ```sh

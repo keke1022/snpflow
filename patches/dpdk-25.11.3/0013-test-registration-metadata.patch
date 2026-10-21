@@ -1,0 +1,150 @@
+From 574cee4316a05e3f885645689a6cded2f66fe563 Mon Sep 17 00:00:00 2001
+From: keke1022 <keke83space@gmail.com>
+Date: Wed, 21 Oct 2026 02:18:45 -0700
+Subject: [PATCH] test: correct BPF flags and register unavailable scheduler
+ test
+
+---
+ app/test/test_bpf.c       | 24 ++++++++++++------------
+ app/test/test_cryptodev.c | 11 +++++++++--
+ 2 files changed, 21 insertions(+), 14 deletions(-)
+
+diff --git a/app/test/test_bpf.c b/app/test/test_bpf.c
+index f7cca2b..eb3f7dd 100644
+--- a/app/test/test_bpf.c
++++ b/app/test/test_bpf.c
+@@ -91,7 +91,7 @@ test_no_instructions(void)
+ 	return bpf_load_test(RTE_DIM(ins), ins, EINVAL);
+ }
+ 
+-REGISTER_FAST_TEST(bpf_no_instructions_autotest, NOHUGE_OK, ASAN_OK, test_no_instructions);
++REGISTER_FAST_TEST(bpf_no_instructions_autotest, true, true, test_no_instructions);
+ 
+ /*
+  * Try and load a BPF program comprising single EXIT instruction.
+@@ -108,7 +108,7 @@ test_exit_only(void)
+ 	return bpf_load_test(RTE_DIM(ins), ins, EINVAL);
+ }
+ 
+-REGISTER_FAST_TEST(bpf_exit_only_autotest, NOHUGE_OK, ASAN_OK, test_exit_only);
++REGISTER_FAST_TEST(bpf_exit_only_autotest, true, true, test_exit_only);
+ 
+ /*
+  * Try and load a BPF program with no EXIT instruction.
+@@ -128,7 +128,7 @@ test_no_exit(void)
+ 	return bpf_load_test(RTE_DIM(ins), ins, EINVAL);
+ }
+ 
+-REGISTER_FAST_TEST(bpf_no_exit_autotest, NOHUGE_OK, ASAN_OK, test_no_exit);
++REGISTER_FAST_TEST(bpf_no_exit_autotest, true, true, test_no_exit);
+ 
+ /*
+  * Try and load smallest possible valid BPF program.
+@@ -150,7 +150,7 @@ test_minimal_working(void)
+ 	return bpf_load_test(RTE_DIM(ins), ins, 0);
+ }
+ 
+-REGISTER_FAST_TEST(bpf_minimal_working_autotest, NOHUGE_OK, ASAN_OK, test_minimal_working);
++REGISTER_FAST_TEST(bpf_minimal_working_autotest, true, true, test_minimal_working);
+ 
+ /*
+  * Try and load valid BPF program adding one to the argument.
+@@ -178,7 +178,7 @@ test_add_one(void)
+ 	return bpf_load_test(RTE_DIM(ins), ins, 0);
+ }
+ 
+-REGISTER_FAST_TEST(bpf_add_one_autotest, NOHUGE_OK, ASAN_OK, test_add_one);
++REGISTER_FAST_TEST(bpf_add_one_autotest, true, true, test_add_one);
+ 
+ /*
+  * Try and load valid BPF program subtracting one from the argument.
+@@ -206,7 +206,7 @@ test_subtract_one(void)
+ 	return bpf_load_test(RTE_DIM(ins), ins, 0);
+ }
+ 
+-REGISTER_FAST_TEST(bpf_subtract_one_autotest, NOHUGE_OK, ASAN_OK, test_subtract_one);
++REGISTER_FAST_TEST(bpf_subtract_one_autotest, true, true, test_subtract_one);
+ 
+ /*
+  * Conditionally jump over invalid operation as first instruction.
+@@ -242,7 +242,7 @@ test_jump_over_invalid_first(void)
+ 	return bpf_load_test(RTE_DIM(ins), ins, EINVAL);
+ }
+ 
+-REGISTER_FAST_TEST(bpf_jump_over_invalid_first_autotest, NOHUGE_OK, ASAN_OK,
++REGISTER_FAST_TEST(bpf_jump_over_invalid_first_autotest, true, true,
+ 	test_jump_over_invalid_first);
+ 
+ /*
+@@ -285,7 +285,7 @@ test_jump_over_invalid_non_first(void)
+ 	return bpf_load_test(RTE_DIM(ins), ins, EINVAL);
+ }
+ 
+-REGISTER_FAST_TEST(bpf_jump_over_invalid_non_first_autotest, NOHUGE_OK, ASAN_OK,
++REGISTER_FAST_TEST(bpf_jump_over_invalid_non_first_autotest, true, true,
+ 	test_jump_over_invalid_non_first);
+ 
+ /*
+@@ -3745,7 +3745,7 @@ test_stack_alignment(void)
+ 	return TEST_SUCCESS;
+ }
+ 
+-REGISTER_FAST_TEST(bpf_stack_alignment_autotest, NOHUGE_OK, ASAN_OK, test_stack_alignment);
++REGISTER_FAST_TEST(bpf_stack_alignment_autotest, true, true, test_stack_alignment);
+ 
+ /*
+  * Test copying `__uint128_t`.
+@@ -3801,7 +3801,7 @@ test_stack_copy_uint128(void)
+ 
+ #endif
+ 
+-REGISTER_FAST_TEST(bpf_stack_copy_uint128_autotest, NOHUGE_OK, ASAN_OK, test_stack_copy_uint128);
++REGISTER_FAST_TEST(bpf_stack_copy_uint128_autotest, true, true, test_stack_copy_uint128);
+ 
+ /*
+  * Test SSE2 load and store intrinsics.
+@@ -3887,7 +3887,7 @@ test_stack_sse2(void)
+ 
+ #endif
+ 
+-REGISTER_FAST_TEST(bpf_stack_sse2_autotest, NOHUGE_OK, ASAN_OK, test_stack_sse2);
++REGISTER_FAST_TEST(bpf_stack_sse2_autotest, true, true, test_stack_sse2);
+ 
+ /*
+  * Run memcpy and rte_memcpy with various data sizes and offsets (unaligned and aligned).
+@@ -4020,7 +4020,7 @@ test_stack_memcpy(void)
+ 	return TEST_SUCCESS;
+ }
+ 
+-REGISTER_FAST_TEST(bpf_stack_memcpy_autotest, NOHUGE_OK, ASAN_OK, test_stack_memcpy);
++REGISTER_FAST_TEST(bpf_stack_memcpy_autotest, true, true, test_stack_memcpy);
+ 
+ #ifdef TEST_BPF_ELF_LOAD
+ 
+diff --git a/app/test/test_cryptodev.c b/app/test/test_cryptodev.c
+index ed9a0fb..1bdb1af 100644
+--- a/app/test/test_cryptodev.c
++++ b/app/test/test_cryptodev.c
+@@ -20207,10 +20207,17 @@ test_cryptodev_scheduler(void)
+ 	return ret;
+ }
+ 
+-REGISTER_DRIVER_TEST(cryptodev_scheduler_autotest, test_cryptodev_scheduler);
+-
++#else
++static int
++test_cryptodev_scheduler(void)
++{
++	printf("Crypto scheduler driver is not built, skipping test\n");
++	return TEST_SKIPPED;
++}
+ #endif
+ 
++REGISTER_DRIVER_TEST(cryptodev_scheduler_autotest, test_cryptodev_scheduler);
++
+ static int
+ test_cryptodev_dpaa2_sec(void)
+ {
+-- 
+2.51.0
+

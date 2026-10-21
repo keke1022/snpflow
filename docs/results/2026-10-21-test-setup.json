@@ -1,0 +1,347 @@
+{
+  "baseline_repository_revision": "7260aef5ddebff094f4f8810bee48dfe6a62bd5c",
+  "patch": "0013-test-registration-metadata.patch",
+  "patch_application": {
+    "release": "54139e1ff627b06e438ea14ca0a8750168314735",
+    "historical": "92d30365612504a53394ac6d3de15c854c7b8d09"
+  },
+  "software_build_meson_inventory": {
+    "before": 208,
+    "after": 220,
+    "restored_bpf": [
+      "bpf_add_one_autotest",
+      "bpf_exit_only_autotest",
+      "bpf_jump_over_invalid_first_autotest",
+      "bpf_jump_over_invalid_non_first_autotest",
+      "bpf_minimal_working_autotest",
+      "bpf_no_exit_autotest",
+      "bpf_no_instructions_autotest",
+      "bpf_stack_alignment_autotest",
+      "bpf_stack_copy_uint128_autotest",
+      "bpf_stack_memcpy_autotest",
+      "bpf_stack_sse2_autotest",
+      "bpf_subtract_one_autotest"
+    ]
+  },
+  "bpf_meson_results": [
+    {
+      "name": "DPDK:fast-tests / bpf_no_instructions_autotest",
+      "result": "OK",
+      "returncode": 0,
+      "duration": 0.1559004783630371,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=bpf_no_instructions_autotest",
+        "-l",
+        "0",
+        "--no-pci",
+        "--no-shconf",
+        "--no-telemetry"
+      ]
+    },
+    {
+      "name": "DPDK:fast-tests / bpf_exit_only_autotest",
+      "result": "OK",
+      "returncode": 0,
+      "duration": 0.15826201438903809,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=bpf_exit_only_autotest",
+        "-l",
+        "0",
+        "--no-pci",
+        "--no-shconf",
+        "--no-telemetry"
+      ]
+    },
+    {
+      "name": "DPDK:fast-tests / bpf_no_exit_autotest",
+      "result": "OK",
+      "returncode": 0,
+      "duration": 0.158843994140625,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=bpf_no_exit_autotest",
+        "-l",
+        "0",
+        "--no-pci",
+        "--no-shconf",
+        "--no-telemetry"
+      ]
+    },
+    {
+      "name": "DPDK:fast-tests / bpf_minimal_working_autotest",
+      "result": "OK",
+      "returncode": 0,
+      "duration": 0.15982627868652344,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=bpf_minimal_working_autotest",
+        "-l",
+        "0",
+        "--no-pci",
+        "--no-shconf",
+        "--no-telemetry"
+      ]
+    },
+    {
+      "name": "DPDK:fast-tests / bpf_add_one_autotest",
+      "result": "OK",
+      "returncode": 0,
+      "duration": 0.15879130363464355,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=bpf_add_one_autotest",
+        "-l",
+        "0",
+        "--no-pci",
+        "--no-shconf",
+        "--no-telemetry"
+      ]
+    },
+    {
+      "name": "DPDK:fast-tests / bpf_subtract_one_autotest",
+      "result": "OK",
+      "returncode": 0,
+      "duration": 0.16074037551879883,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=bpf_subtract_one_autotest",
+        "-l",
+        "0",
+        "--no-pci",
+        "--no-shconf",
+        "--no-telemetry"
+      ]
+    },
+    {
+      "name": "DPDK:fast-tests / bpf_jump_over_invalid_first_autotest",
+      "result": "OK",
+      "returncode": 0,
+      "duration": 0.1583871841430664,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=bpf_jump_over_invalid_first_autotest",
+        "-l",
+        "0",
+        "--no-pci",
+        "--no-shconf",
+        "--no-telemetry"
+      ]
+    },
+    {
+      "name": "DPDK:fast-tests / bpf_jump_over_invalid_non_first_autotest",
+      "result": "OK",
+      "returncode": 0,
+      "duration": 0.15977716445922852,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=bpf_jump_over_invalid_non_first_autotest",
+        "-l",
+        "0",
+        "--no-pci",
+        "--no-shconf",
+        "--no-telemetry"
+      ]
+    },
+    {
+      "name": "DPDK:fast-tests / bpf_stack_alignment_autotest",
+      "result": "OK",
+      "returncode": 0,
+      "duration": 0.16051793098449707,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=bpf_stack_alignment_autotest",
+        "-l",
+        "0",
+        "--no-pci",
+        "--no-shconf",
+        "--no-telemetry"
+      ]
+    },
+    {
+      "name": "DPDK:fast-tests / bpf_stack_copy_uint128_autotest",
+      "result": "OK",
+      "returncode": 0,
+      "duration": 0.16230249404907227,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=bpf_stack_copy_uint128_autotest",
+        "-l",
+        "0",
+        "--no-pci",
+        "--no-shconf",
+        "--no-telemetry"
+      ]
+    },
+    {
+      "name": "DPDK:fast-tests / bpf_stack_sse2_autotest",
+      "result": "OK",
+      "returncode": 0,
+      "duration": 0.16123199462890625,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=bpf_stack_sse2_autotest",
+        "-l",
+        "0",
+        "--no-pci",
+        "--no-shconf",
+        "--no-telemetry"
+      ]
+    },
+    {
+      "name": "DPDK:fast-tests / bpf_stack_memcpy_autotest",
+      "result": "OK",
+      "returncode": 0,
+      "duration": 0.16196298599243164,
+      "command": [
+        "/tmp/snpflow-native-software-build/app/dpdk-test",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=bpf_stack_memcpy_autotest",
+        "-l",
+        "0",
+        "--no-pci",
+        "--no-shconf",
+        "--no-telemetry"
+      ]
+    }
+  ],
+  "scheduler_before": [
+    {
+      "name": "cryptodev_scheduler_autotest",
+      "result": "FAIL",
+      "returncode": 255,
+      "duration": 0.215,
+      "timeout": 30,
+      "command": [
+        "/tmp/snpflow-easy-fixes/before/app/dpdk-test",
+        "-l",
+        "0,1",
+        "--no-pci",
+        "-a",
+        "0000:00:00.0",
+        "--no-huge",
+        "-m",
+        "2048",
+        "--file-prefix=cryptodev_scheduler_autotest",
+        "--no-shconf",
+        "--no-telemetry"
+      ]
+    }
+  ],
+  "registration_after": {
+    "bpf_meson_tests": [
+      "bpf_no_instructions_autotest",
+      "bpf_exit_only_autotest",
+      "bpf_no_exit_autotest",
+      "bpf_minimal_working_autotest",
+      "bpf_add_one_autotest",
+      "bpf_subtract_one_autotest",
+      "bpf_jump_over_invalid_first_autotest",
+      "bpf_jump_over_invalid_non_first_autotest",
+      "bpf_stack_alignment_autotest",
+      "bpf_stack_copy_uint128_autotest",
+      "bpf_stack_sse2_autotest",
+      "bpf_stack_memcpy_autotest"
+    ],
+    "bpf_outcomes": {
+      "bpf_no_instructions_autotest": "OK",
+      "bpf_exit_only_autotest": "OK",
+      "bpf_no_exit_autotest": "OK",
+      "bpf_minimal_working_autotest": "OK",
+      "bpf_add_one_autotest": "OK",
+      "bpf_subtract_one_autotest": "OK",
+      "bpf_jump_over_invalid_first_autotest": "OK",
+      "bpf_jump_over_invalid_non_first_autotest": "OK",
+      "bpf_stack_alignment_autotest": "OK",
+      "bpf_stack_copy_uint128_autotest": "OK",
+      "bpf_stack_sse2_autotest": "OK",
+      "bpf_stack_memcpy_autotest": "OK"
+    },
+    "scheduler_command": [
+      "/tmp/snpflow-native-software-build/app/dpdk-test",
+      "-l",
+      "0",
+      "--no-huge",
+      "-m",
+      "256",
+      "--no-pci",
+      "--no-shconf",
+      "--no-telemetry"
+    ],
+    "scheduler_test": "cryptodev_scheduler_autotest",
+    "scheduler_exit_status": 77,
+    "expected_scheduler_exit_status": 77,
+    "scope": "Missing-driver reporting; scheduler functionality is not exercised"
+  },
+  "registration_before_exit_status": 1,
+  "registration_before_error": "Missing no-huge Meson registration: bpf_no_instructions_autotest",
+  "software_profile": {
+    "command": [
+      "bash",
+      "scripts/test-dpdk-upstream.sh",
+      "/tmp/snpflow-native-software-build",
+      "--software"
+    ],
+    "exit_status": 0,
+    "cpu_affinity_used": "0,1",
+    "memory_mib": 2048,
+    "test_exit_statuses": {
+      "efd_autotest": 0,
+      "efd_perf_autotest": 0,
+      "security_autotest": 0,
+      "ipsec_autotest": 0,
+      "cryptodev_null_autotest": 0,
+      "eventdev_common_autotest": 0,
+      "eventdev_selftest_sw": 0,
+      "event_crypto_adapter_autotest": 0,
+      "event_dma_adapter_autotest": 0,
+      "event_eth_tx_adapter_autotest": 0
+    }
+  },
+  "binary_sha256": {
+    "before": "bfc93bb6bf086a255cd68d6bcd56443d305531cafb288d97ebe8d193881eaca7",
+    "after": "ead357be35f52409af4782b216cdc9259a191b071cf4c194234131b24e691714"
+  },
+  "limits": [
+    "Targeted reruns, not a new full-suite total",
+    "Scheduler SKIP validates missing-driver reporting only",
+    "Passing commands may skip unsupported internal subcases",
+    "No NIC DMA, xbuf or private bridge behavior changed"
+  ]
+}
