@@ -60,6 +60,13 @@ and nonzero exits still fail that run. The separate registration check covers
 twelve BPF commands and expects a disabled scheduler to report a skip; the
 latter is not a scheduler functional pass.
 
+Code revision `79e796afcca8` also passed GitHub's
+[portable checks](https://github.com/keke1022/snpflow/actions/runs/39693734986)
+and [DPDK integration](https://github.com/keke1022/snpflow/actions/runs/39693735335).
+The integration run includes all 24 native commands above, the existing
+production-code regressions, and their ASan/UBSan checks. Those sanitizer
+checks do not instrument every upstream test or library.
+
 The [machine-readable record](results/2026-10-21-software-rx-pmd.json)
 contains negative controls, pristine comparisons, binary hashes, and runner
 outcomes. Local diagnostic logs are in `/tmp/snpflow-test-followup`; the runner

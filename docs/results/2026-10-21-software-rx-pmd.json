@@ -278,5 +278,20 @@
     "requested_injection": 2048,
     "scope": "Software ring loopback only; not physical NIC performance or private-bridge coverage"
   },
-  "scope": "Targeted configuration fixes and reruns, not a new full-suite audit. RX interrupts, full mempool benchmarks and the intermittent timer failure remain unresolved."
+  "scope": "Targeted configuration fixes and reruns, not a new full-suite audit. RX interrupts, full mempool benchmarks and the intermittent timer failure remain unresolved.",
+  "github_ci": {
+    "code_revision": "79e796afcca818455914ad0721df1e9115d97d3a",
+    "runs": [
+      {
+        "name": "Portable checks",
+        "conclusion": "success",
+        "url": "https://github.com/keke1022/snpflow/actions/runs/39693734986"
+      },
+      {
+        "name": "DPDK integration",
+        "conclusion": "success",
+        "url": "https://github.com/keke1022/snpflow/actions/runs/39693735335"
+      }
+    ]
+  }
 }
