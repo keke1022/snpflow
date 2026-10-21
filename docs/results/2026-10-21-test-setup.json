@@ -343,5 +343,32 @@
     "Scheduler SKIP validates missing-driver reporting only",
     "Passing commands may skip unsupported internal subcases",
     "No NIC DMA, xbuf or private bridge behavior changed"
+  ],
+  "scheduler_enabled_compile": {
+    "source": "app/test/test_cryptodev.c",
+    "extra_flags": [
+      "-DRTE_CRYPTO_SCHEDULER",
+      "-I/tmp/snpflow-dpdk-work/drivers/crypto/scheduler"
+    ],
+    "exit_status": 0,
+    "scope": "Compile-only branch check; scheduler PMD linking and functionality not tested"
+  },
+  "github_ci_for_code_revision": [
+    {
+      "id": 39576345432,
+      "name": "Portable checks",
+      "head_sha": "09bc6e24f78081b0157de8eacd04eea1d40061e0",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/keke1022/snpflow/actions/runs/39576345432"
+    },
+    {
+      "id": 39576345533,
+      "name": "DPDK integration",
+      "head_sha": "09bc6e24f78081b0157de8eacd04eea1d40061e0",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/keke1022/snpflow/actions/runs/39576345533"
+    }
   ]
 }

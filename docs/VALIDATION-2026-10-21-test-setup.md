@@ -72,7 +72,21 @@ extra event/DMA drivers. The registration check specifically requires a build
 with the scheduler disabled. CI retains the commands' logs, status table,
 Meson BPF results and scheduler availability evidence.
 
-## Limits
+## Verification and limits
+
+All thirteen patches were reapplied from each recorded clean baseline; both
+resulting tree hashes match the manifests. As a separate compile-only check,
+`test_cryptodev.c` also compiled with `RTE_CRYPTO_SCHEDULER` defined and the
+scheduler headers available. This checks the enabled preprocessor branch;
+it is not a link or runtime test of the scheduler PMD.
+
+Code revision `09bc6e24f78081b0157de8eacd04eea1d40061e0` passed both
+[portable checks](https://github.com/keke1022/snpflow/actions/runs/39576345432)
+and [DPDK integration](https://github.com/keke1022/snpflow/actions/runs/39576345533)
+on GitHub. The integration run includes all ten native commands, twelve BPF
+commands, the missing-scheduler check, existing production-code regressions,
+and existing ASan/UBSan regressions. The latter instrument SNPFlow's regression
+targets, not every upstream library or BPF test.
 
 This does not add RX interrupt support to `net_null`, configure host hugepages,
 shorten the long mempool benchmarks, or alter timer deadlines. Those cases
