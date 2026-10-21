@@ -1,8 +1,8 @@
-# SNP-DPDK
+# SNPFlow
 
 **Shared-memory DMA and authenticated object transfer for DPDK inside AMD SEV-SNP confidential VMs.**
 
-SNP-DPDK extends **DPDK 25.11.3's mlx5 driver and testpmd** with a shared-memory
+SNPFlow extends **DPDK 25.11.3's mlx5 driver and testpmd** with a shared-memory
 DMA path, a shared/private packet-buffer bridge, and an authenticated chunk
 transport. A companion Linux kernel module exports explicitly shared guest
 memory as dma-bufs. The implementation has been tested with an
@@ -174,6 +174,8 @@ bounds-test.c         historical boundary-logic model (not production PMD code)
 ## Contributing and licensing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for validation and patch maintenance.
-Existing per-file SPDX notices and upstream licenses remain applicable.
-This repository does not yet declare a blanket license for original files
-without a license notice.
+Original project material is available under the [MIT License](LICENSE),
+except for the components listed in [LICENSING.md](LICENSING.md). The kernel
+module and DMA attachment probe retain GPL-2.0; DPDK patches and the chunk
+protocol implementation retain BSD-3-Clause. This is a mixed-license source
+repository, not an MIT-only distribution of DPDK or Linux kernel code.

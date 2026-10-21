@@ -41,5 +41,8 @@ loss, failed runs, and any exclusions. A short line-rate interval is not a
 sustained zero-loss result. Keep original dated observations and add a new
 report when the implementation or setup changes.
 
-Do not add a repository-wide license without the owners' decision. Preserve
-existing SPDX notices and upstream copyright/license text.
+Original project material defaults to MIT, subject to the component scopes
+in [LICENSING.md](LICENSING.md). Preserve existing SPDX notices, upstream
+copyrights, and component licenses. DPDK integration changes remain
+BSD-3-Clause; kernel-module changes remain GPL-2.0. A contribution must not
+silently relicense imported or derived code under the default MIT grant.
