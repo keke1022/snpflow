@@ -1,0 +1,184 @@
+From 0ff094423c39fc90a1300e6cfaea25ba1d98df81 Mon Sep 17 00:00:00 2001
+From: keke1022 <keke83space@gmail.com>
+Date: Tue, 20 Oct 2026 18:11:20 -0700
+Subject: [PATCH] app/testpmd: enforce private buffers across forwarding modes
+
+---
+ app/test-pmd/cvm_mbuf_bridge.c | 62 ++++++++++++++++++++++++++++------
+ app/test-pmd/cvm_mbuf_bridge.h | 14 +++++++-
+ app/test-pmd/testpmd.c         |  8 +++++
+ 3 files changed, 73 insertions(+), 11 deletions(-)
+
+diff --git a/app/test-pmd/cvm_mbuf_bridge.c b/app/test-pmd/cvm_mbuf_bridge.c
+index a8714e9..916add6 100644
+--- a/app/test-pmd/cvm_mbuf_bridge.c
++++ b/app/test-pmd/cvm_mbuf_bridge.c
+@@ -201,17 +201,56 @@ find_private_pool(const struct rte_mempool *pool)
+ 	return NULL;
+ }
+ 
++struct rte_mempool *
++cvm_mbuf_bridge_cpu_pool(struct rte_mempool *dma_pool)
++{
++	const struct cvm_pool_pair *pair;
++
++	if (!cvm_mbuf_bridge_enabled())
++		return dma_pool;
++	pair = find_dma_pool(dma_pool);
++	if (pair == NULL) {
++		rte_errno = EINVAL;
++		return NULL;
++	}
++	return pair->private_pool;
++}
++
++int
++cvm_mbuf_bridge_check_mode(const char *mode)
++{
++	if (!cvm_mbuf_bridge_enabled())
++		return 0;
++	if (strcmp(mode, "ieee1588") != 0 &&
++	    strcmp(mode, "recycle_mbufs") != 0 &&
++	    strcmp(mode, "shared_rxq") != 0)
++		return 0;
++	TESTPMD_LOG(ERR, "CVM private bridge does not support %s: "
++		"device metadata/recycling/shared queues need a separate validation path\n",
++		mode);
++	rte_errno = ENOTSUP;
++	return -ENOTSUP;
++}
++
+ /* Validate every bound consumed by rte_pktmbuf_copy() before it walks m. */
+ static bool
+-mbuf_chain_valid(const struct rte_mbuf *m)
++mbuf_chain_valid(struct rte_mbuf *m, bool private)
+ {
+-	const struct rte_mbuf *seg = m;
++	struct rte_mbuf *seg = m;
+ 	uint64_t total = 0;
+ 	uint16_t count = 0;
+ 
+ 	if (m == NULL || m->pkt_len == 0 || m->nb_segs == 0)
+ 		return false;
+ 	while (seg != NULL && count < m->nb_segs) {
++		if (private ? find_private_pool(seg->pool) == NULL :
++		    find_dma_pool(seg->pool) == NULL)
++			return false;
++		/* An indirect/private descriptor is not proof of private data. */
++		if (private && (RTE_MBUF_HAS_EXTBUF(seg) ||
++		    (RTE_MBUF_CLONED(seg) &&
++		     find_private_pool(rte_mbuf_from_indirect(seg)->pool) == NULL)))
++			return false;
+ 		if (seg->buf_addr == NULL || seg->data_off > seg->buf_len ||
+ 		    seg->data_len > seg->buf_len - seg->data_off)
+ 			return false;
+@@ -246,18 +285,20 @@ cvm_mbuf_bridge_rx_copy(struct rte_mbuf **pkts, uint16_t nb_pkts,
+ 	uint16_t out = 0;
+ 	uint16_t i;
+ 
++	if (!cvm_mbuf_bridge_enabled()) {
++		if (dropped != NULL)
++			*dropped = 0;
++		return nb_pkts;
++	}
++
+ 	for (i = 0; i < nb_pkts; i++) {
+ 		struct rte_mbuf *src = pkts[i];
+ 		const struct cvm_pool_pair *pair = find_dma_pool(src->pool);
+ 		struct rte_mbuf *dst;
+ 		uint16_t port;
+ 
+-		if (pair == NULL) {
+-			pkts[out++] = src;
+-			continue;
+-		}
+ 		port = src->port;
+-		if (unlikely(!mbuf_chain_valid(src))) {
++		if (unlikely(pair == NULL || !mbuf_chain_valid(src, false))) {
+ 			rte_pktmbuf_free(src);
+ 			drop_count++;
+ 			continue;
+@@ -283,6 +324,9 @@ cvm_mbuf_bridge_tx_copy(struct rte_mbuf **pkts, uint16_t nb_pkts)
+ 	struct rte_mbuf *copies[MAX_PKT_BURST] = {0};
+ 	uint16_t i;
+ 
++	if (!cvm_mbuf_bridge_enabled())
++		return 0;
++
+ 	if (unlikely(nb_pkts > RTE_DIM(copies))) {
+ 		rte_errno = EINVAL;
+ 		return -EINVAL;
+@@ -290,9 +334,7 @@ cvm_mbuf_bridge_tx_copy(struct rte_mbuf **pkts, uint16_t nb_pkts)
+ 	for (i = 0; i < nb_pkts; i++) {
+ 		const struct cvm_pool_pair *pair = find_private_pool(pkts[i]->pool);
+ 
+-		if (pair == NULL)
+-			continue;
+-		if (unlikely(!mbuf_chain_valid(pkts[i]))) {
++		if (unlikely(pair == NULL || !mbuf_chain_valid(pkts[i], true))) {
+ 			rte_errno = EINVAL;
+ 			goto fail;
+ 		}
+diff --git a/app/test-pmd/cvm_mbuf_bridge.h b/app/test-pmd/cvm_mbuf_bridge.h
+index 2c6cb53..b3cff19 100644
+--- a/app/test-pmd/cvm_mbuf_bridge.h
++++ b/app/test-pmd/cvm_mbuf_bridge.h
+@@ -30,9 +30,19 @@ int cvm_mbuf_bridge_attach_pool(struct rte_mempool *dma_pool,
+ 
+ bool cvm_mbuf_bridge_enabled(void);
+ 
++/* Select application memory; RX queues must keep the original DMA pool.
++ * With the bridge active an unregistered pool is an error (NULL/EINVAL).
++ * Without the bridge the input pool is returned unchanged.
++ */
++struct rte_mempool *cvm_mbuf_bridge_cpu_pool(struct rte_mempool *dma_pool);
++
++/* Reject modes which depend on discarded device metadata or bypass copying. */
++int cvm_mbuf_bridge_check_mode(const char *mode);
++
+ /*
+  * Replace packets backed by registered DMA pools with synchronous deep copies
+- * from their private peer pools. Ordinary packets pass through unchanged.
++ * from their private peer pools. Unregistered pools are rejected while the
++ * bridge is active; with no registered pools ordinary packets pass through.
+  * Returned packets are compacted at the start of pkts. dropped receives the
+  * number rejected for malformed chains or allocation failures.
+  */
+@@ -43,6 +53,8 @@ uint16_t cvm_mbuf_bridge_rx_copy(struct rte_mbuf **pkts, uint16_t nb_pkts,
+  * Replace private application packets with synchronous deep copies from the
+  * corresponding DMA-facing pools. On success private sources are released.
+  * On failure pkts and their ownership are unchanged.
++ * Every segment must belong to a registered private pool. In particular,
++ * sending a DMA-pool packet directly is an error while the bridge is active.
+  */
+ int cvm_mbuf_bridge_tx_copy(struct rte_mbuf **pkts, uint16_t nb_pkts);
+ 
+diff --git a/app/test-pmd/testpmd.c b/app/test-pmd/testpmd.c
+index 7a42de1..b5a2f1b 100644
+--- a/app/test-pmd/testpmd.c
++++ b/app/test-pmd/testpmd.c
+@@ -1929,6 +1929,11 @@ init_config(void)
+ 
+ 		if (mbp == NULL)
+ 			mbp = mbuf_pool_find(0, 0);
++		/* Generators, packet splitting and GSO process private data. */
++		mbp = cvm_mbuf_bridge_cpu_pool(mbp);
++		if (mbp == NULL)
++			rte_exit(EXIT_FAILURE, "No application mbuf pool for lcore %u\n",
++				 lc_id);
+ 		fwd_lcores[lc_id]->mbp = mbp;
+ #ifdef RTE_LIB_GSO
+ 		/* initialize GSO context */
+@@ -2644,6 +2649,9 @@ start_packet_forwarding(int with_tx_first)
+ 	stream_init_t stream_init = cur_fwd_eng->stream_init;
+ 	unsigned int i;
+ 
++	if (cvm_mbuf_bridge_check_mode(cur_fwd_eng->fwd_mode_name) != 0)
++		return;
++
+ 	if (strcmp(cur_fwd_eng->fwd_mode_name, "rxonly") == 0 && !nb_rxq)
+ 		rte_exit(EXIT_FAILURE, "rxq are 0, cannot use rxonly fwd mode\n");
+ 
+-- 
+2.51.0
+

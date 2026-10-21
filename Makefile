@@ -21,7 +21,7 @@ clean:
 	rm -f build/bounds-test
 	$(MAKE) -C scratch/cvm-chunk-proto clean
 
-.PHONY: all clean test check
+.PHONY: all clean test check test-dpdk
 
 # Portable checks: no NIC, GPU, kernel module, or root privileges needed.
 build/bounds-test: bounds-test.c
@@ -35,6 +35,11 @@ test: build/bounds-test
 
 check:
 	$(PYTHON) scripts/check-repo.py
+
+# Real DPDK code, using a previously built tree; no NIC or root needed.
+test-dpdk:
+	@test -n "$(DPDK_BUILD)" || { echo 'Set DPDK_BUILD=/path/to/dpdk/build'; exit 2; }
+	$(PYTHON) scripts/test-dpdk-integration.py "$(DPDK_BUILD)"
 
 # nop-probe 需要 DPDK 的 PRM 定义，经 prm/ 垫片引入
 DPDK_MLX5 ?= $(HOME)/dpdk-stable-25.11.3/drivers/common/mlx5

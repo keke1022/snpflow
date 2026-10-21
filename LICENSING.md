@@ -14,6 +14,7 @@ upstream copyrights, relicense DPDK or Linux, or remove their conditions.
 | `scratch/dmabuf-attach-probe/dmabuf_probe.c`, `probe_uapi.h`, `probe_user.c` | GPL-2.0-only | Existing file notices are retained, including the userspace probe |
 | `scratch/cvm-chunk-proto/*.c` and `*.h` | BSD-3-Clause | Existing protocol, sender, receiver, and test notices are retained |
 | `patches/dpdk-25.11.3/*.patch` | BSD-3-Clause | DPDK changes, new integration files, and upstream context follow the target components' license |
+| `tests/dpdk/*.c` | BSD-3-Clause | Regression fixtures compiled with DPDK source and libraries |
 | Code, patch files, and generator scripts in `dpdk-patches/archive/` | BSD-3-Clause | Historical DPDK implementation material, including embedded DPDK code; documentation remains under the default MIT grant |
 
 The `GPL-2.0` identifier in these existing files means version 2 only, not

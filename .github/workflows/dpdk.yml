@@ -1,0 +1,55 @@
+name: DPDK integration
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential meson ninja-build pkg-config libnuma-dev libibverbs-dev libssl-dev python3-pyelftools
+      - name: Verify release and apply the full patch series
+        run: |
+          curl --fail --location --retry 3 https://fast.dpdk.org/rel/dpdk-25.11.3.tar.xz -o "$RUNNER_TEMP/dpdk.tar.xz"
+          echo "$(cat patches/dpdk-25.11.3/RELEASE_SHA256)  $RUNNER_TEMP/dpdk.tar.xz" | sha256sum --check
+          mkdir "$RUNNER_TEMP/dpdk"
+          tar -xf "$RUNNER_TEMP/dpdk.tar.xz" -C "$RUNNER_TEMP/dpdk" --strip-components=1
+          git -C "$RUNNER_TEMP/dpdk" init
+          git -C "$RUNNER_TEMP/dpdk" config user.name 'keke1022'
+          git -C "$RUNNER_TEMP/dpdk" config user.email 'keke83space@gmail.com'
+          git -C "$RUNNER_TEMP/dpdk" add -f .
+          git -C "$RUNNER_TEMP/dpdk" commit -m 'Import verified DPDK 25.11.3 release'
+          bash scripts/apply-dpdk-patches.sh "$RUNNER_TEMP/dpdk"
+      - name: Build mlx5, testpmd, tests and example applications
+        run: |
+          meson setup "$RUNNER_TEMP/dpdk-build" "$RUNNER_TEMP/dpdk" \
+            -Dtests=true -Ddefault_library=static -Dplatform=generic \
+            '-Denable_drivers=bus/*,common/mlx5,net/mlx5,net/null,net/ring,mempool/ring' \
+            -Denable_apps=test,test-pmd -Dexamples=l2fwd,l3fwd
+          ninja -C "$RUNNER_TEMP/dpdk-build" -j 2
+      - name: Production-header guard tests
+        run: |
+          cpu=$(python3 -c 'import os; print(min(os.sched_getaffinity(0)))')
+          for test in mlx5_rx_validate_autotest mlx5_tx_validate_autotest; do
+            DPDK_TEST="$test" "$RUNNER_TEMP/dpdk-build/app/dpdk-test" \
+              -l "$cpu" --no-huge -m 256 --no-pci --no-shconf --no-telemetry
+          done
+      - name: Production-code and forwarding regressions
+        run: python3 scripts/test-dpdk-integration.py "$RUNNER_TEMP/dpdk-build"
+      - name: Address and undefined-behavior sanitizers
+        run: python3 scripts/test-dpdk-integration.py "$RUNNER_TEMP/dpdk-build" --sanitize
+      - name: Retain Meson diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dpdk-meson-logs
+          path: ${{ runner.temp }}/dpdk-build/meson-logs/

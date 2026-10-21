@@ -1,0 +1,178 @@
+{
+  "date_local": "2026-10-20 America/Los_Angeles",
+  "execution_date_utc": "2026-10-21",
+  "archived_base_result_tree": "bc671f0bfef8c50f2934d3002b76afe68397ccf4",
+  "official_release_result_tree": "488ff6198a811383b3d8bb71b23b09dcbe8e1d36",
+  "environment": {
+    "cpu": "AMD EPYC 9354",
+    "guest": "AMD SEV-SNP VMPL0, 8 vCPUs, 16 GiB",
+    "guest_kernel": "7.0.0-34-generic",
+    "nic": "NVIDIA ConnectX-7 PF1, guest 0000:04:00.0",
+    "firmware": "28.44.1036 (MT_0000000834)",
+    "rdma_core": "61.0",
+    "openssl": "3.5.5",
+    "gcc": "15.2.0-16ubuntu1",
+    "queues": 4,
+    "forwarding_lcores": 4,
+    "authenticated_queues_lcores": 1,
+    "dedicated_cpu_pinning": false
+  },
+  "software": {
+    "production_cases_host": 48,
+    "production_cases_guest": 48,
+    "asan_ubsan_cases_host": 48,
+    "pre_fix_negative_controls": {
+      "rx": "expected assertion failure: mutated packet length",
+      "tx": "expected assertion failure: mutated WQE counter"
+    },
+    "dpdk_tests": [
+      "mlx5_rx_validate_autotest",
+      "mlx5_tx_validate_autotest",
+      "mbuf_autotest"
+    ]
+  },
+  "kernel_probe_groups_passed": 6,
+  "forwarding": [
+    {
+      "mode": "rxonly",
+      "rx": 1024,
+      "tx": 0,
+      "tx_dropped": 0
+    },
+    {
+      "mode": "io",
+      "rx": 1024,
+      "tx": 1024,
+      "tx_dropped": 0
+    },
+    {
+      "mode": "mac",
+      "rx": 1024,
+      "tx": 1024,
+      "tx_dropped": 0
+    },
+    {
+      "mode": "macswap",
+      "rx": 1024,
+      "tx": 1024,
+      "tx_dropped": 0
+    },
+    {
+      "mode": "5tswap",
+      "rx": 1024,
+      "tx": 1024,
+      "tx_dropped": 0,
+      "byte_verified_udp_packets": 1024
+    },
+    {
+      "mode": "csum",
+      "rx": 1024,
+      "tx": 1024,
+      "tx_dropped": 0
+    },
+    {
+      "mode": "noisy",
+      "rx": 1024,
+      "tx": 1024,
+      "tx_dropped": 0
+    },
+    {
+      "mode": "icmpecho",
+      "rx": 10,
+      "tx": 10,
+      "tx_dropped": 0
+    },
+    {
+      "mode": "txonly",
+      "rx": 0,
+      "tx": 5811776,
+      "tx_dropped": 0,
+      "observed_udp_payload_bytes": 22
+    },
+    {
+      "mode": "flowgen",
+      "rx": 0,
+      "tx": 12853344,
+      "tx_dropped": 0
+    }
+  ],
+  "segmentation": [
+    {
+      "case": "txonly-two-segments",
+      "rx": 0,
+      "tx": 512,
+      "dropped": 0,
+      "host_udp_received": 512
+    },
+    {
+      "case": "csum-split",
+      "rx": 1024,
+      "tx": 1024,
+      "dropped": 0,
+      "host_udp_received": 0
+    },
+    {
+      "case": "csum-gso",
+      "rx": 1024,
+      "tx": 3072,
+      "dropped": 0,
+      "host_udp_received": 0
+    }
+  ],
+  "authenticated": [
+    {
+      "case": "baseline",
+      "bytes": 1048576,
+      "sha256": "7954efb1472b152e716f5375e33c3aacb16216e147ac5d5b78342b634ded3bff",
+      "sender": "cvm_chunk_send=PASS object_bytes=1048576 chunks=758 transmissions=758 retransmissions=0 wire_bytes=1115280 seconds=0.013273258 payload_gbps=0.631993 object_id=2ccd3d9085625a23 sha256=7954efb1472b152e716f5375e33c3aacb16216e147ac5d5b78342b634ded3bff",
+      "receiver": "cvmchunk: accepted=758 duplicates=0 rejected=0 acks=758"
+    },
+    {
+      "case": "drop",
+      "bytes": 1048576,
+      "sha256": "7954efb1472b152e716f5375e33c3aacb16216e147ac5d5b78342b634ded3bff",
+      "sender": "cvm_chunk_send=PASS object_bytes=1048576 chunks=758 transmissions=758 retransmissions=1 wire_bytes=1115280 seconds=1.014942457 payload_gbps=0.008265 object_id=c0a93f4c4abde7b4 sha256=7954efb1472b152e716f5375e33c3aacb16216e147ac5d5b78342b634ded3bff",
+      "receiver": "cvmchunk: accepted=758 duplicates=0 rejected=0 acks=758"
+    },
+    {
+      "case": "corrupt",
+      "bytes": 1048576,
+      "sha256": "7954efb1472b152e716f5375e33c3aacb16216e147ac5d5b78342b634ded3bff",
+      "sender": "cvm_chunk_send=PASS object_bytes=1048576 chunks=758 transmissions=759 retransmissions=1 wire_bytes=1116752 seconds=1.014864738 payload_gbps=0.008266 object_id=336768e4f358c8b3 sha256=7954efb1472b152e716f5375e33c3aacb16216e147ac5d5b78342b634ded3bff",
+      "receiver": "cvmchunk: accepted=758 duplicates=0 rejected=1 acks=758"
+    },
+    {
+      "case": "replay",
+      "bytes": 1048576,
+      "sha256": "7954efb1472b152e716f5375e33c3aacb16216e147ac5d5b78342b634ded3bff",
+      "sender": "cvm_chunk_send=PASS object_bytes=1048576 chunks=758 transmissions=759 retransmissions=0 wire_bytes=1116752 seconds=0.013213098 payload_gbps=0.634871 object_id=70c23662dd1ba017 sha256=7954efb1472b152e716f5375e33c3aacb16216e147ac5d5b78342b634ded3bff",
+      "receiver": "cvmchunk: accepted=758 duplicates=1 rejected=0 acks=759"
+    },
+    {
+      "case": "512mib",
+      "bytes": 536870912,
+      "sha256": "683981ea39b2c91e1ceb7637fec51b4498eb3c7eb03f09be84ca9015b2a43d8e",
+      "sender": "cvm_chunk_send=PASS object_bytes=536870912 chunks=387913 transmissions=387913 retransmissions=0 wire_bytes=571007256 seconds=3.596479841 payload_gbps=1.194214 object_id=2586aec64b47c873 sha256=683981ea39b2c91e1ceb7637fec51b4498eb3c7eb03f09be84ca9015b2a43d8e",
+      "receiver": "cvmchunk: accepted=387913 duplicates=0 rejected=0 acks=387913"
+    }
+  ],
+  "unpaced_txonly_observation": {
+    "tx": 5173248,
+    "application_dropped": 1771488,
+    "nic_tx_errors": 0,
+    "interpretation": "Unpaced run without retry hit backpressure; not a zero-loss throughput result."
+  },
+  "port_stop_start_cycles": 3,
+  "unsupported": {
+    "ieee1588": "Not compiled in the hardware build; bridge rejection covered in software test.",
+    "recycle_mbufs": "Explicit bridge rejection on hardware.",
+    "shared_rxq": "Explicit bridge rejection on hardware."
+  },
+  "limits": [
+    "No live forged-CQE injection",
+    "No full offload/configuration matrix",
+    "No controlled throughput comparison",
+    "No new GPU transfer validation",
+    "Bridge remains testpmd-specific; authentication remains cvmchunk-specific"
+  ]
+}

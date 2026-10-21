@@ -15,6 +15,7 @@ supersede their open questions.
 | [2026-09-29 synthetic KV object](VALIDATION-2026-09-29-kv-cache-transfer.md) | 512 MiB exact private reassembly, source hash, corrected sender timeout |
 | [2026-09-30 CUDA probe](../scratch/cuda-import-probe/README.md) | GPU made ready; direct import rejected; protected 64-byte H2D copy passed |
 | [2026-10-20 repository validation](VALIDATION-2026-10-20-repository.md) | Read-only recovery, complete patch-series equivalence, portable test results |
+| [2026-10-20 correctness and coverage](VALIDATION-2026-10-20-feature-coverage.md) | CQE mutation fixes, 48 production-code tests, forwarding/GSO hardware matrix, authenticated reruns, official-release baseline |
 | [Kernel issues and history](../kmod/ISSUES.md) | Allocation and lifetime behavior, design constraints, known gaps |
 
 ## Runnable experiments

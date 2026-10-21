@@ -80,6 +80,18 @@ DPDK command names are `mlx5_rx_validate_autotest` and
 exercise RX budgets/completions and exact TX completion matching without
 injecting into real NIC queues.
 
+Run the new actual-PMD and forwarding-engine regressions from the SNPFlow
+checkout:
+
+```sh
+make test-dpdk DPDK_BUILD=/path/to/dpdk-stable-25.11.3/build
+python3 scripts/test-dpdk-integration.py /path/to/dpdk-stable-25.11.3/build --sanitize
+```
+
+These use synthetic CQ rings and virtual Ethernet ports, so they require no
+NIC, hugepages, root, or SNP guest. The [test guide](../tests/dpdk/README.md)
+lists required build drivers, negative controls, and sanitizer scope.
+
 ## 4. Shared/private bridge smoke test
 
 Choose the guest PCI BDF and dedicated guest CPU cores for the actual machine.
@@ -98,6 +110,13 @@ At the testpmd prompt, enable promiscuous mode if required by the test traffic
 (`set promisc 0 on`), then `start`. After sending traffic, run `stop`, inspect
 port/forwarding statistics, and `quit` to release resources normally.
 Use `rxonly` to test the RX copy without a TX copy.
+
+Patch 0010 also assigns private pools to `txonly`, `flowgen`, checksum packet
+splitting, and GSO. Sending an unregistered/shared application mbuf is rejected
+while the bridge is active. `ieee1588`, `recycle_mbufs`, and `shared_rxq` remain
+unsupported; they must not silently run without their required semantics.
+The [October regression report](VALIDATION-2026-10-20-feature-coverage.md)
+provides the mode matrix and additional segmentation commands.
 
 With the full series installed, these modes use the private-mbuf bridge.
 The September 24 raw-RX results used the earlier conservative baseline,

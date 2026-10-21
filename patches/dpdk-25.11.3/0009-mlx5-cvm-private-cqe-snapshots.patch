@@ -1,0 +1,285 @@
+From 6b6ae7aeedc3e6bddb47609694de3fefa759acb0 Mon Sep 17 00:00:00 2001
+From: keke1022 <keke83space@gmail.com>
+Date: Tue, 20 Oct 2026 18:11:20 -0700
+Subject: [PATCH] net/mlx5: consume private CQE snapshots in CVM mode
+
+---
+ app/test/test_mlx5_rx_validate.c     | 12 +++++++-
+ drivers/net/mlx5/mlx5_cvm_snapshot.h | 31 ++++++++++++++++++++
+ drivers/net/mlx5/mlx5_rx.c           | 24 ++++++++++++++--
+ drivers/net/mlx5/mlx5_rx_validate.h  |  3 +-
+ drivers/net/mlx5/mlx5_tx.c           | 42 ++++++++++++++++++++++------
+ 5 files changed, 99 insertions(+), 13 deletions(-)
+ create mode 100644 drivers/net/mlx5/mlx5_cvm_snapshot.h
+
+diff --git a/app/test/test_mlx5_rx_validate.c b/app/test/test_mlx5_rx_validate.c
+index e723567..256e7de 100644
+--- a/app/test/test_mlx5_rx_validate.c
++++ b/app/test/test_mlx5_rx_validate.c
+@@ -138,8 +138,18 @@ test_cvm_scalar_cqe_guard(void)
+ 
+ 	result = mlx5_rx_cvm_cqe_validate(true, false, false, 4, 2048,
+ 					  true, 1);
++	TEST_ASSERT_EQUAL(result, MLX5_RX_CVM_GUARD_LENGTH,
++		"CRC-only completion with no packet payload was accepted");
++
++	result = mlx5_rx_cvm_cqe_validate(true, false, false, 0, 2048,
++					  false, 1);
++	TEST_ASSERT_EQUAL(result, MLX5_RX_CVM_GUARD_LENGTH,
++		"zero-length completion would desynchronize CQ and RQ");
++
++	result = mlx5_rx_cvm_cqe_validate(true, false, false, 5, 2048,
++					  true, 1);
+ 	TEST_ASSERT_EQUAL(result, MLX5_RX_CVM_GUARD_OK,
+-		"minimum byte count containing the retained CRC was rejected");
++		"nonempty packet with retained CRC was rejected");
+ 
+ 	result = mlx5_rx_cvm_cqe_validate(true, false, false, 64, 0,
+ 					  false, 1);
+diff --git a/drivers/net/mlx5/mlx5_cvm_snapshot.h b/drivers/net/mlx5/mlx5_cvm_snapshot.h
+new file mode 100644
+index 0000000..3fe9884
+--- /dev/null
++++ b/drivers/net/mlx5/mlx5_cvm_snapshot.h
+@@ -0,0 +1,31 @@
++/* SPDX-License-Identifier: BSD-3-Clause */
++#ifndef MLX5_CVM_SNAPSHOT_H_
++#define MLX5_CVM_SNAPSHOT_H_
++
++#include <stddef.h>
++#include <stdint.h>
++
++#include <rte_io.h>
++#include <mlx5_prm.h>
++
++/*
++ * Call only after observing a software-owned CQE. Device/host writes may
++ * continue during this copy, so the result is not an atomic or authenticated
++ * device record. Validate the private result (including ownership) and use
++ * only that result until consumption finishes. Volatile byte loads ensure
++ * the compiler cannot substitute a later shared-memory read for the copy.
++ */
++static inline void
++mlx5_cvm_cqe_snapshot(struct mlx5_cqe *dst,
++		     const volatile struct mlx5_cqe *src)
++{
++	const volatile uint8_t *in = (const volatile uint8_t *)src;
++	uint8_t *out = (uint8_t *)dst;
++	size_t i;
++
++	rte_io_rmb();
++	for (i = 0; i < sizeof(*dst); i++)
++		out[i] = in[i];
++}
++
++#endif /* MLX5_CVM_SNAPSHOT_H_ */
+diff --git a/drivers/net/mlx5/mlx5_rx.c b/drivers/net/mlx5/mlx5_rx.c
+index 2b76e47..6f560d5 100644
+--- a/drivers/net/mlx5/mlx5_rx.c
++++ b/drivers/net/mlx5/mlx5_rx.c
+@@ -30,6 +30,7 @@
+ #include "mlx5_devx.h"
+ #include "mlx5_rx.h"
+ #include "mlx5_rx_validate.h"
++#include "mlx5_cvm_snapshot.h"
+ #ifdef HAVE_MLX5_MSTFLINT
+ #include <mstflint/mtcr.h>
+ #endif
+@@ -537,7 +538,7 @@ mlx5_rx_cvm_fail_stop(struct mlx5_rxq_data *rxq,
+ 		reason = "MPRQ CQE";
+ 		break;
+ 	case MLX5_RX_CVM_GUARD_COMPRESSED:
+-		reason = "compressed CQE";
++		reason = "non-basic CQE format";
+ 		break;
+ 	case MLX5_RX_CVM_GUARD_LENGTH:
+ 		reason = "invalid byte count";
+@@ -545,6 +546,9 @@ mlx5_rx_cvm_fail_stop(struct mlx5_rxq_data *rxq,
+ 	case MLX5_RX_CVM_GUARD_LRO:
+ 		reason = "unexpected LRO CQE";
+ 		break;
++	case MLX5_RX_CVM_GUARD_OPCODE:
++		reason = "unexpected or error CQE opcode";
++		break;
+ 	case MLX5_RX_CVM_GUARD_OK:
+ 	default:
+ 		reason = "unknown validation failure";
+@@ -835,6 +839,12 @@ mlx5_rx_poll_len(struct mlx5_rxq_data *rxq, volatile struct mlx5_cqe *cqe,
+ 			ret = (rxq->cqe_comp_layout) ?
+ 				check_cqe_iteration(cqe, rxq->cqe_n, rxq->cq_ci) :
+ 				check_cqe(cqe, cqe_n, rxq->cq_ci);
++			/* Host-controlled error records must not enter queue recovery. */
++			if (unlikely(rxq->cvm_guard &&
++			    ret != MLX5_CQE_STATUS_HW_OWN &&
++			    MLX5_CQE_OPCODE(cqe->op_own) != MLX5_CQE_RESP_SEND))
++				return mlx5_rx_cvm_fail_stop(rxq,
++					MLX5_RX_CVM_GUARD_OPCODE, cqe);
+ 			if (unlikely(ret != MLX5_CQE_STATUS_SW_OWN)) {
+ 				if (unlikely(ret == MLX5_CQE_STATUS_ERR ||
+ 					     rxq->err_state)) {
+@@ -863,7 +873,7 @@ mlx5_rx_poll_len(struct mlx5_rxq_data *rxq, volatile struct mlx5_cqe *cqe,
+ 				uint32_t byte_count = rte_be_to_cpu_32(cqe->byte_cnt);
+ 
+ 				guard_result = mlx5_rx_cvm_cqe_validate(true, mprq,
+-					MLX5_CQE_FORMAT(op_own) == MLX5_COMPRESSED,
++					MLX5_CQE_FORMAT(op_own) != 0,
+ 					byte_count, rxq->rxseg[0].length,
+ 					rxq->crc_present, cqe->lro_num_seg);
+ 				if (guard_result != MLX5_RX_CVM_GUARD_OK)
+@@ -1089,6 +1099,7 @@ uint16_t
+ mlx5_rx_burst(void *dpdk_rxq, struct rte_mbuf **pkts, uint16_t pkts_n)
+ {
+ 	struct mlx5_rxq_data *rxq = dpdk_rxq;
++	struct mlx5_cqe cvm_cqe;
+ 	const uint32_t wqe_n = 1 << rxq->elts_n;
+ 	const uint32_t wqe_mask = wqe_n - 1;
+ 	const uint32_t cqe_n = 1 << rxq->cqe_n;
+@@ -1144,6 +1155,15 @@ mlx5_rx_burst(void *dpdk_rxq, struct rte_mbuf **pkts, uint16_t pkts_n)
+ 		}
+ 		if (!pkt) {
+ 			cqe = &(*rxq->cqes)[rxq->cq_ci & cqe_mask];
++			if (unlikely(rxq->cvm_guard)) {
++				if (check_cqe(cqe, cqe_n, rxq->cq_ci) ==
++				    MLX5_CQE_STATUS_HW_OWN) {
++					rte_mbuf_raw_free(rep);
++					break;
++				}
++				mlx5_cvm_cqe_snapshot(&cvm_cqe, cqe);
++				cqe = &cvm_cqe;
++			}
+ 			len = mlx5_rx_poll_len(rxq, cqe, cqe_n, cqe_mask,
+ 					       &mcqe, &skip_cnt, false, NULL);
+ 			if (unlikely(len & MLX5_ERROR_CQE_MASK)) {
+diff --git a/drivers/net/mlx5/mlx5_rx_validate.h b/drivers/net/mlx5/mlx5_rx_validate.h
+index 4b3433d..3e30fd6 100644
+--- a/drivers/net/mlx5/mlx5_rx_validate.h
++++ b/drivers/net/mlx5/mlx5_rx_validate.h
+@@ -98,6 +98,7 @@ enum mlx5_rx_cvm_guard_result {
+ 	MLX5_RX_CVM_GUARD_COMPRESSED,
+ 	MLX5_RX_CVM_GUARD_LENGTH,
+ 	MLX5_RX_CVM_GUARD_LRO,
++	MLX5_RX_CVM_GUARD_OPCODE,
+ };
+ 
+ /**
+@@ -137,7 +138,7 @@ mlx5_rx_cvm_cqe_validate(bool enabled, bool mprq, bool compressed,
+ 	if (compressed)
+ 		return MLX5_RX_CVM_GUARD_COMPRESSED;
+ 	if (capacity == 0 || byte_count > capacity ||
+-	    byte_count < (crc_present ? 4U : 0U))
++	    byte_count <= (crc_present ? 4U : 0U))
+ 		return MLX5_RX_CVM_GUARD_LENGTH;
+ 	if (lro_num_seg > 1)
+ 		return MLX5_RX_CVM_GUARD_LRO;
+diff --git a/drivers/net/mlx5/mlx5_tx.c b/drivers/net/mlx5/mlx5_tx.c
+index 5aa6d85..37a65d6 100644
+--- a/drivers/net/mlx5/mlx5_tx.c
++++ b/drivers/net/mlx5/mlx5_tx.c
+@@ -26,6 +26,7 @@
+ #include "mlx5_utils.h"
+ #include "mlx5_rxtx.h"
+ #include "mlx5_tx.h"
++#include "mlx5_cvm_snapshot.h"
+ 
+ #define MLX5_TXOFF_INFO(func, olx) {mlx5_tx_burst_##func, olx},
+ 
+@@ -142,21 +143,23 @@ mlx5_tx_error_cqe_handle(struct mlx5_txq_data *__rte_restrict txq,
+  *
+  * @param txq
+  *   Pointer to TX queue structure.
+- * @param last_cqe
+- *   valid CQE pointer, if not NULL update txq->wqe_pi and flush the buffers.
++ * @param completed
++ *   Whether a validated normal completion was consumed.
++ * @param wqe_counter
++ *   Last consumed counter in device byte order, saved before ringing the CQ.
+  * @param olx
+  *   Configured Tx offloads mask. It is fully defined at
+  *   compile time and may be used for optimization.
+  */
+ static __rte_always_inline void
+ mlx5_tx_comp_flush(struct mlx5_txq_data *__rte_restrict txq,
+-		   volatile struct mlx5_cqe *last_cqe,
++		   bool completed, uint16_t wqe_counter,
+ 		   unsigned int olx __rte_unused)
+ {
+-	if (likely(last_cqe != NULL)) {
++	if (likely(completed)) {
+ 		uint16_t tail;
+ 
+-		txq->wqe_pi = rte_be_to_cpu_16(last_cqe->wqe_counter);
++		txq->wqe_pi = rte_be_to_cpu_16(wqe_counter);
+ 		tail = mlx5_tx_fcq_elts_head(
+ 			txq->fcqs[(txq->cq_ci - 1) & txq->cqe_m]);
+ 		if (likely(tail != txq->elts_tail)) {
+@@ -185,7 +188,8 @@ mlx5_tx_handle_completion(struct mlx5_txq_data *__rte_restrict txq,
+ 			  unsigned int olx __rte_unused)
+ {
+ 	unsigned int count = MLX5_TX_COMP_MAX_CQE;
+-	volatile struct mlx5_cqe *last_cqe = NULL;
++	bool completed = false;
++	uint16_t last_wqe_counter = 0;
+ 	bool ring_doorbell = false;
+ 	int ret;
+ 
+@@ -193,9 +197,25 @@ mlx5_tx_handle_completion(struct mlx5_txq_data *__rte_restrict txq,
+ 		return;
+ 	do {
+ 		volatile struct mlx5_cqe *cqe;
++		struct mlx5_cqe cvm_cqe;
+ 
+ 		cqe = &txq->cqes[txq->cq_ci & txq->cqe_m];
+ 		ret = check_cqe(cqe, txq->cqe_s, txq->cq_ci);
++		if (unlikely(txq->cvm_guard &&
++		    ret != MLX5_CQE_STATUS_HW_OWN)) {
++			mlx5_cvm_cqe_snapshot(&cvm_cqe, cqe);
++			cqe = &cvm_cqe;
++			ret = check_cqe(cqe, txq->cqe_s, txq->cq_ci);
++			if (ret != MLX5_CQE_STATUS_HW_OWN &&
++			    (MLX5_CQE_OPCODE(cqe->op_own) != MLX5_CQE_REQ ||
++			     MLX5_CQE_FORMAT(cqe->op_own) != 0)) {
++				DRV_LOG(ERR, "port %u Tx queue %u fail-stopped: "
++					"unexpected CQE opcode/format 0x%02x",
++					txq->port_id, txq->idx, cqe->op_own);
++				txq->cvm_tx_stopped = 1;
++				return;
++			}
++		}
+ 		if (unlikely(ret != MLX5_CQE_STATUS_SW_OWN)) {
+ 			if (likely(ret != MLX5_CQE_STATUS_ERR)) {
+ 				/* No new CQEs in completion queue. */
+@@ -227,7 +247,7 @@ mlx5_tx_handle_completion(struct mlx5_txq_data *__rte_restrict txq,
+ 			ring_doorbell = true;
+ 			++txq->cq_ci;
+ 			txq->cq_pi = txq->cq_ci;
+-			last_cqe = NULL;
++			completed = false;
+ 			continue;
+ 		}
+ 		/* Normal transmit completion. */
+@@ -264,8 +284,12 @@ mlx5_tx_handle_completion(struct mlx5_txq_data *__rte_restrict txq,
+ 						       wqe_id, ts);
+ 		}
+ 		ring_doorbell = true;
++		/* Save before the CQ slot is released or the snapshot is reused. */
++		last_wqe_counter = txq->cvm_guard ?
++			mlx5_tx_fcq_wqe_counter(txq->fcqs[txq->cq_ci & txq->cqe_m]) :
++			cqe->wqe_counter;
+ 		++txq->cq_ci;
+-		last_cqe = cqe;
++		completed = true;
+ 		/*
+ 		 * We have to restrict the amount of processed CQEs
+ 		 * in one tx_burst routine call. The CQ may be large
+@@ -280,7 +304,7 @@ mlx5_tx_handle_completion(struct mlx5_txq_data *__rte_restrict txq,
+ 		/* Ring doorbell to notify hardware. */
+ 		rte_compiler_barrier();
+ 		*txq->cq_db = rte_cpu_to_be_32(txq->cq_ci);
+-		mlx5_tx_comp_flush(txq, last_cqe, olx);
++		mlx5_tx_comp_flush(txq, completed, last_wqe_counter, olx);
+ 	}
+ }
+ 
+-- 
+2.51.0
+

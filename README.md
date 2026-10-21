@@ -11,7 +11,8 @@ memory as dma-bufs. The implementation has been tested with an
 This repository contains the kernel module, an ordered DPDK patch series,
 standalone probes, protocol tests, and dated validation reports. It is a
 research prototype; the measured capabilities and remaining limitations are
-listed below. Hardware results were recorded on September 21–30, 2026.
+listed below. Hardware results were recorded on September 21–30 and
+October 20, 2026.
 
 ## What we add to DPDK
 
@@ -19,8 +20,8 @@ listed below. Hardware results were recorded on September 21–30, 2026.
 |---|---|---|
 | Linux `cvm_shared` module | Shared-page allocation, dma-buf export, VMA-based address lookup, and lifetime tracking | Give the NIC DMA-accessible memory without SWIOTLB bouncing |
 | mlx5 memory and DevX integration | DMA-specific allocation and dma-buf registration for packet buffers, CQ/SQ/RQ/QP memory, doorbells, and HWS resources | Make the mlx5 data path work inside the SNP guest |
-| Conservative mlx5 mode | Scalar SPRQ, completion validation, exact TX completion tracking, and fail-stop handling | Bound the supported configuration and reject invalid device-written state |
-| testpmd private-mbuf bridge | Copy shared RX data into private application mbufs; copy private TX data into shared DMA mbufs | Keep application processing and mbuf metadata in private guest memory |
+| Conservative mlx5 mode | Scalar SPRQ, private CQE snapshots, completion validation, exact TX completion tracking, and fail-stop handling | Validate and consume the same private completion record; reject unsupported device-written state |
+| testpmd private-mbuf bridge | Private forwarding/generator/GSO pools; shared RX snapshots and private-to-shared TX copies; strict pool ownership | Keep application processing and mbuf metadata in private guest memory |
 | testpmd `cvmchunk` mode | AES-256-GCM chunks, authenticated headers and ACKs, private reassembly bitmap, duplicate handling, and sender retransmission | Authenticate data before committing it to a private object |
 
 The original probes found that ordinary private guest memory could not be
@@ -52,7 +53,8 @@ not part of the complete authenticated transport.
 | CPU / confidential VM | AMD EPYC 9354; AMD SEV-SNP, VMPL0 |
 | NIC | NVIDIA ConnectX-7, PF1 passthrough; mlx5; guest BDF `0000:04:00.0` |
 | Link / packet format | 100 Gb/s; IPv4/UDP; 1,500-byte IP packets, 1,472-byte UDP payloads |
-| Guest kernel | `7.0.0-31-generic` |
+| Guest kernel | September: `7.0.0-31-generic`; October regression: `7.0.0-34-generic` |
+| NIC firmware | October regression: `28.44.1036` (`MT_0000000834`) |
 | DPDK / RDMA userspace | DPDK `25.11.3`; rdma-core `61.0` |
 | mlx5 / EAL configuration | DevX + HWS (`dv_flow_en=2`), `--iova-mode=va`, `--mp-alloc=xbuf` |
 | Guest DMA translation | No translating guest IOMMU; the module rejects non-identity domains |
@@ -62,7 +64,7 @@ not part of the complete authenticated transport.
 
 These results establish behavior on this configuration. Other NIC models,
 firmware revisions, guest kernels, and DPDK releases have not been qualified.
-The NIC firmware version was not captured in the archived reports.
+The NIC firmware version was not captured in the September reports.
 
 ## Test cases and results
 
@@ -74,6 +76,8 @@ The NIC firmware version was not captured in the archived reports.
 | NIC DMA and macswap | Hardware completion matches the submitted operation; returned packet differs only in swapped MAC addresses | Byte-level round trip passed |
 | Resource lifecycle | Repeated port stop/start without fd growth; oversized shared allocation fails closed | Ten restart cycles passed; allocation above 1 GiB rejected |
 | Private-mbuf bridge, four queues | RX copy and RX/private-processing/TX copy complete without errors or drops | RX-only: 729,448 packets; macswap: 91,184 RX and TX packets; zero misses/errors/drops |
+| Expanded bridge coverage (October) | Generators, split packets and GSO use private application pools | 11 engine modes exercised on virtual/physical ports; 512/512 segmented TX packets received; GSO: 1,024 RX → 3,072 TX, zero drops |
+| CQE mutation regressions (October) | Changing shared fields after validation cannot change consumed length/counter | 23 actual-PMD cases passed; both pre-fix mutation controls failed as expected |
 | Authenticated protocol | Reject tampered headers/payloads before allocation or commit; accept out-of-order chunks; deduplicate authentic replays | Host and CVM protocol tests passed; host ASan/UBSan and static analysis passed |
 | Protocol fault injection | Recover from a missing or corrupted chunk; preserve final object hash after replay | All three 1 MiB end-to-end cases passed |
 | 512 MiB synthetic KV object | Reassemble 387,913 chunks in private memory and match sender SHA-256 | Exact hash match; zero retransmissions, duplicates, NIC misses, or NIC errors |
@@ -82,6 +86,9 @@ Evidence: [kernel and baseline checks](kmod/ISSUES.md),
 [bridge validation](docs/VALIDATION-2026-09-27-sync-mbuf-bridge.md),
 [protocol and fault injection](docs/VALIDATION-2026-09-29-authenticated-chunks.md),
 [512 MiB transfer](docs/VALIDATION-2026-09-29-kv-cache-transfer.md).
+The [October correctness and coverage report](docs/VALIDATION-2026-10-20-feature-coverage.md)
+records the new source revisions, software tests, physical-port matrix, and
+remaining unsupported configurations.
 
 ### Performance by data path
 
@@ -102,6 +109,12 @@ See the [baseline measurements](docs/VALIDATION-2026-09-24.md),
 Guest vCPUs were not pinned to dedicated host CPUs, and their affinity
 overlapped the senders. A repeatable, long-duration zero-loss capacity result
 remains open.
+
+The October 20 regression repeated the authenticated 512 MiB transfer after
+the CQE fixes: **3.596 s, 1.194 Gbit/s**, exact SHA-256, and zero
+retransmissions or NIC errors/misses. This was a functional rerun with an
+updated guest kernel and no dedicated CPU pinning, not a controlled
+performance comparison.
 
 The 40 GiB workload models BF16 K+V for 80 layers, 131,072 tokens, eight KV
 heads, and head dimension 128. The 512 MiB object models one such layer.
@@ -136,6 +149,11 @@ make check
 and Python channel model. These do not require root, DPDK, a NIC, or a GPU.
 They do not substitute for the tests compiled against the actual mlx5 headers
 or the recorded hardware runs.
+`make test-dpdk DPDK_BUILD=/path/to/dpdk/build` runs the 48 new production-code
+regressions, including all 11 applicable forwarding engines when OpenSSL is
+enabled. See the [DPDK test guide](tests/dpdk/README.md). A separate GitHub
+Actions workflow builds the verified official release and runs these tests
+with and without ASan/UBSan.
 
 For the complete data path, follow:
 
@@ -161,7 +179,13 @@ bounds-test.c         historical boundary-logic model (not production PMD code)
 - The supported receive configuration is scalar SPRQ. CVM mode disables CQE
   compression, vector RX, and MPRQ, and rejects scatter, LRO, and shared RX queues.
 - Forged CQE behavior is covered by isolated logic tests, not malicious
-  completion injection into a live mlx5 CQ.
+  completion injection into a live mlx5 CQ. New tests additionally execute
+  actual PMD functions with synthetic rings and deterministic shared-field
+  mutation at the validation boundary.
+- The private bridge is integrated into testpmd, including packet generators,
+  splitting and GSO. Ordinary DPDK applications do not acquire it automatically.
+  CVM mode rejects `ieee1588`, `recycle_mbufs`, and `shared_rxq`; those modes
+  need separate handling for device metadata, recycling, or shared queues.
 - `cvmchunk` supports one object per receiver start, one queue/core, fixed
   endpoints, and unfragmented IPv4/UDP. It has no congestion control or RTT
   estimator; the test sender uses a one-second retransmission timeout.

@@ -45,6 +45,11 @@ def main():
     for name in series:
         if not (series_dir / name).is_file():
             errors.append(f"Missing patch: {name}")
+    for name in ("BASE_TREE", "RESULT_TREE", "RELEASE_BASE_TREE", "RELEASE_RESULT_TREE"):
+        if not re.fullmatch(r"[0-9a-f]{40}\n?", (series_dir / name).read_text()):
+            errors.append(f"Invalid DPDK tree hash: {name}")
+    if not re.fullmatch(r"[0-9a-f]{64}\n?", (series_dir / "RELEASE_SHA256").read_text()):
+        errors.append("Invalid DPDK release archive SHA-256")
 
     # Verify the standalone protocol core matches the code shipped in DPDK.
     patch = (series_dir / "0008-testpmd-cvm-authenticated-chunks.patch").read_text()
